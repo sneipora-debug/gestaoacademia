@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sou Fitness Dashboard</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <aside class="sidebar">
+
+            <div class="logo">
+                <h1>SOU FITNESS</h1>
+                <p>CONECTE-SE COM SUA FORÇA</p>
+            </div>
+
+            <nav>
+                <ul>
+                    <li class="active">Dashboard</li>
+                    <li>Financeiro</li>
+                    <a href="/Alunos.html">
+                        <li>Alunos</li>
+                    </a>
+                    <a href="/Mensalidades.html">
+                        <li>Mensalidades</li>
+                    </a>
+                    <a href="/Despesas.html">
+                        <li>Despesas</li>
+                    </a>
+                    <a href="/Relatorios.html">
+                        <li>Relatórios</li>     
+                    </a>
+                   
+                    <li>Agenda</li>
+                    <li>Comunicação</li>
+                    <li>Configurações</li>
+                </ul>
+            </nav>
+
+        </aside>
+
+        <main>
+
+            <header class="topo">
+                <div>
+                    <h2>Olá, Gregory 👋</h2>
+                    <span>Veja o resumo geral da sua academia hoje.</span>
+                </div>
+            </header>
+
+            <section class="cards">
+
+                <div class="card">
+                    <h4>FATURAMENTO MENSAL</h4>
+                    <h2>R$ 125.430,00</h2>
+                    <p class="verde">▲ 12,5%</p>
+                </div>
+
+                <div class="card">
+                    <h4>DESPESAS</h4>
+                    <h2>R$ 48.250,00</h2>
+                    <p class="vermelho">▲ 8,3%</p>
+                </div>
+
+                <div class="card">
+                    <h4>LUCRO LÍQUIDO</h4>
+                    <h2>R$ 77.180,00</h2>
+                    <p class="verde">▲ 15,7%</p>
+                </div>
+
+                <div class="card">
+                    <h4>FLUXO DE CAIXA</h4>
+                    <h2>R$ 68.900,00</h2>
+                    <p class="verde">▲ 10,2%</p>
+                </div>
+
+            </section>
+
+            <section class="graficos">
+
+                <div class="grafico-card">
+                    <h3>Faturamento x Despesas</h3>
+                    <canvas id="financeiro"></canvas>
+                </div>
+
+                <div class="grafico-card">
+                    <h3>Fluxo de Caixa</h3>
+                    <canvas id="caixa"></canvas>
+                </div>
+
+            </section>
+
+            <section class="inferior">
+
+                <div class="card-grande">
+                    <h3>Alunos Ativos</h3>
+
+                    <div class="numero">
+                        1.245
+                    </div>
+
+                    <div class="barra">
+                        <div class="barra-fill"></div>
+                    </div>
+
+                    <div class="info">
+                        <div>
+                            <strong>128</strong>
+                            <span>Novos alunos</span>
+                        </div>
+
+                        <div>
+                            <strong>23</strong>
+                            <span>Cancelamentos</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="card-grande">
+                    <h3>Mensalidades Pendentes</h3>
+
+                    <div class="numero">
+                        R$ 18.650
+                    </div>
+
+                    <div class="info">
+                        <div>
+                            <strong>87</strong>
+                            <span>Pendências</span>
+                        </div>
+
+                        <div>
+                            <strong>62</strong>
+                            <span>Inadimplentes</span>
+                        </div>
+                    </div>
+
+                </div>
+
+            </section>
+
+        </main>
+
+    </div>
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>
