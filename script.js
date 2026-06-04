@@ -1425,5 +1425,13 @@ document.addEventListener("DOMContentLoaded", () => {
       atualizarDashboard();
     });
   if (filtroAno)
-    filtroAno.addEventListener("input", () => {
+    filtroAno.addEventListener("change", () => {
       carregarAlunos();
+      atualizarDashboard();
+    });
+
+  // Inicialização ao carregar a página
+  window.inicializarPlanos();
+  carregarAlunos();
+  atualizarDashboard();
+});
