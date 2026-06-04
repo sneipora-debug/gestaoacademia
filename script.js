@@ -279,16 +279,35 @@ document.addEventListener("DOMContentLoaded", () => {
     );
 
     // --- LIMPEZA DE PROJEÇÕES PARA INATIVOS ---
-    // Se o aluno desistiu (Inativo), removemos cobranças futuras que ainda estão PENDENTES.
-    // Isso mantém o que ele já deve (ATRASADO) e o que já pagou (PAGO).
+    // Se o aluno desistiu (Inativo), removemos cobranças futuras não pagas.
+    // Mantém: o que já pagou (PAGO) e o que deve (ATRASADO até o cancelamento).
     alunos.forEach((a) => {
       if (a.status === "Inativo") {
+        // Descobre o mês/ano de cancelamento para ser o limite
+        let numLimite = null;
+        if (a.dataCancelamento) {
+          const partes = a.dataCancelamento.split("/");
+          if (partes.length === 3) {
+            numLimite = parseInt(partes[2]) * 100 + parseInt(partes[1]);
+          }
+        }
+
         cobrancas = cobrancas.filter((c) => {
-          const ehDesteAluno = c.alunoId === a.id;
-          const ehFutura = c.vencimento > hojeIso;
-          const naoEstaPago = c.status !== "PAGO";
-          // Se o aluno desistir, removemos o que for futuro ou o que estiver pendente de hoje em diante
-          return !(ehDesteAluno && ehFutura && naoEstaPago);
+          if (c.alunoId !== a.id) return true;
+          if (c.status === "PAGO") return true; // Mantém os pagos sempre
+
+          // Se temos data de cancelamento, remove meses POSTERIORES ao cancelamento
+          if (numLimite !== null) {
+            const [mesC, anoC] = c.competencia.split("/").map(Number);
+            const numComp = anoC * 100 + mesC;
+            if (numComp > numLimite) return false; // Remove meses após o cancelamento
+          } else {
+            // Sem data de cancelamento: remove apenas cobranças futuras pendentes
+            const ehFutura = c.vencimento > hojeIso;
+            if (ehFutura && c.status !== "PAGO") return false;
+          }
+
+          return true;
         });
       }
     });
@@ -311,10 +330,24 @@ document.addEventListener("DOMContentLoaded", () => {
     alunos.forEach((a) => {
       if (a.status === "Inativo") return; // Não gera nada novo para quem desistiu
 
+      // Data de matrícula: o ID é um timestamp (Date.now() no momento do cadastro)
+      const dataMatricula = new Date(parseInt(a.id));
+      const anoMatricula = dataMatricula.getFullYear();
+      const mesMatricula = dataMatricula.getMonth() + 1; // 1-12
+
       for (let i = 0; i <= limiteMeses; i++) {
         const dataAlvo = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
         const mes = dataAlvo.getMonth() + 1;
         const ano = dataAlvo.getFullYear();
+
+        // Ignora meses anteriores ao mês de matrícula do aluno
+        if (
+          ano < anoMatricula ||
+          (ano === anoMatricula && mes < mesMatricula)
+        ) {
+          continue;
+        }
+
         const competencia = `${mes.toString().padStart(2, "0")}/${ano}`;
 
         // Verifica se a mensalidade já existe para este aluno neste mês
@@ -347,6 +380,21 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
       }
+    });
+
+    // Remove cobranças anteriores à matrícula que possam ter sido geradas antes desta correção
+    cobrancas = cobrancas.filter((c) => {
+      const aluno = alunos.find((a) => a.id === c.alunoId);
+      if (!aluno) return false;
+      const dataMatricula = new Date(parseInt(aluno.id));
+      const [mesC, anoC] = c.competencia.split("/").map(Number);
+      if (
+        anoC < dataMatricula.getFullYear() ||
+        (anoC === dataMatricula.getFullYear() && mesC < dataMatricula.getMonth() + 1)
+      ) {
+        return false; // Descarta cobranças antes da matrícula (exceto as já pagas — mantém)
+      }
+      return true;
     });
 
     // Atualiza status para ATRASADO logicamente
@@ -681,13 +729,52 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("extratoNomeAluno").innerHTML = tituloExtrato;
     tabelaCorpo.innerHTML = "";
 
-    // Filtra cobranças do aluno para o ano selecionado (ou todas)
-    const historico = cobrancas
-      .filter((c) => c.alunoId === id)
+    // --- FILTRO DE EXIBIÇÃO DO HISTÓRICO ---
+    const hoje = new Date();
+    const mesAtualNum = hoje.getMonth() + 1;
+    const anoAtual = hoje.getFullYear();
+    // Chave do mês atual ex: "052025"
+    const chaveMesAtual = `${mesAtualNum.toString().padStart(2, "0")}${anoAtual}`;
+
+    // Helper para converter competência "MM/AAAA" em chave comparável "MMAAAA"
+    const chaveComp = (comp) => {
+      const [m, a] = comp.split("/");
+      return `${m}${a}`;
+    };
+
+    // Filtra cobranças do aluno:
+    // - Para ATIVO: esconde meses PAGO cujo vencimento já passou (antes do mês atual)
+    //   Mantém: meses com pendência/atraso, o mês atual (pago ou não), e meses futuros
+    // - Para INATIVO: mostra apenas até o mês em que o plano foi cancelado
+    let historico = cobrancas
+      .filter((c) => {
+        if (c.alunoId !== id) return false;
+        const chave = chaveComp(c.competencia);
+
+        if (aluno.status === "Inativo") {
+          // Determina o mês de cancelamento
+          let mesCancelamento = chaveMesAtual;
+          if (aluno.dataCancelamento) {
+            const partes = aluno.dataCancelamento.split("/");
+            if (partes.length === 3) {
+              // dataCancelamento em dd/MM/yyyy
+              mesCancelamento = `${partes[1]}${partes[2]}`;
+            }
+          }
+          // Mostra apenas meses até o cancelamento (inclusive) que não sejam FUTURA limpa
+          // Mantém PAGO sempre, e ATRASADO/PENDENTE até o mês do cancelamento
+          if (c.status === "PAGO") return true;
+          if (chave > mesCancelamento) return false;
+          return true;
+        } else {
+          // ATIVO: esconde meses PAGO que já passaram (antes do mês atual)
+          if (c.status === "PAGO" && chave < chaveMesAtual) return false;
+          return true;
+        }
+      })
       .sort(
         (a, b) =>
-          b.competencia.split("/").reverse().join("") -
-          a.competencia.split("/").reverse().join("")
+          chaveComp(b.competencia) - chaveComp(a.competencia)
       ); // Ordena decrescente
 
     let totalPago = 0,
@@ -707,33 +794,53 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Se não estiver pago OU se o usuário clicou para editar a data
       if (c.status !== "PAGO" || emEdicao) {
-        let dataSugerida = new Date().toISOString().split("T")[0];
-        if (emEdicao && c.dataPagamento) {
-          const partes = c.dataPagamento.split("/");
-          if (partes.length === 3)
-            dataSugerida = `${partes[2]}-${partes[1]}-${partes[0]}`;
-        }
+        // Verifica se já existe outra cobrança PAGA com a mesma competência (duplicata)
+        const jaExistePagoOutro = cobrancas.some(
+          (x) =>
+            x.alunoId === id &&
+            x.competencia === c.competencia &&
+            x.status === "PAGO" &&
+            String(x.id) !== String(c.id)
+        );
 
-        campoPagamento = `
-                    <div style="display: flex; gap: 5px; align-items: center;" class="no-print">
-                        <button onclick="gerarPix('${id}', '${c.valor}')" class="badge-pagamento pendente" style="background:#7c3aed; padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;" title="Gerar QR Code PIX">PIX</button>
-                        <button onclick="enviarWhatsAppPix('${id}', '${c.valor}', '${c.competencia}')" class="badge-pagamento pago" style="background:#22c55e; padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;" title="Enviar PIX por WhatsApp">📱</button>
-                        <input type="date" id="data_ext_${c.id}" value="${dataSugerida}" style="padding: 4px; font-size: 12px; width: 125px; background: #0f172a; border: 1px solid var(--border); color: white; border-radius: 6px; cursor: pointer;">
-                        <button onclick="receberPagamentoExtrato('${id}', '${c.id}', '${c.competencia}')" class="badge-pagamento pago" style="padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;">${emEdicao ? "Atualizar" : "Confirmar"}</button>
-                    </div>
-                `;
+        if (jaExistePagoOutro) {
+          // Esta cobrança é duplicata de uma já paga — exibe apenas aviso
+          campoPagamento = `<span style="color: #F59E0B; font-size: 12px;">⚠️ Já existe pagamento registrado nesta competência</span>`;
+        } else {
+          let dataSugerida = new Date().toISOString().split("T")[0];
+          if (emEdicao && c.dataPagamento) {
+            const partes = c.dataPagamento.split("/");
+            if (partes.length === 3)
+              dataSugerida = `${partes[2]}-${partes[1]}-${partes[0]}`;
+          }
+
+          campoPagamento = `
+                      <div style="display: flex; gap: 5px; align-items: center;" class="no-print">
+                          <button onclick="gerarPix('${id}', '${c.valor}')" class="badge-pagamento pendente" style="background:#7c3aed; padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;" title="Gerar QR Code PIX">PIX</button>
+                          <button onclick="enviarWhatsAppPix('${id}', '${c.valor}', '${c.competencia}')" class="badge-pagamento pago" style="background:#22c55e; padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;" title="Enviar PIX por WhatsApp">📱</button>
+                          <input type="date" id="data_ext_${c.id}" value="${dataSugerida}" style="padding: 4px; font-size: 12px; width: 125px; background: #0f172a; border: 1px solid var(--border); color: white; border-radius: 6px; cursor: pointer;">
+                          <button onclick="receberPagamentoExtrato('${id}', '${c.id}', '${c.competencia}')" class="badge-pagamento pago" style="padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;">${emEdicao ? "Atualizar" : "Confirmar"}</button>
+                      </div>
+                  `;
+        }
       } else {
+        // PAGO — destaque em verde e opção de editar data
         campoPagamento = `
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <span style="font-weight: bold; color: var(--success);">${c.dataPagamento}</span>
+                        <span style="font-weight: bold; color: var(--success);">✅ ${c.dataPagamento}</span>
                         <button onclick="exibirExtratoAluno('${id}', '${c.id}')" title="Editar Data de Pagamento" class="no-print" style="background:none; border:none; cursor:pointer; font-size: 12px; padding: 0;">✏️</button>
                     </div>
                 `;
       }
 
       const row = tabelaCorpo.insertRow();
+      // Linha verde de fundo para mês pago
+      if (c.status === "PAGO") {
+        row.style.background = "rgba(34,197,94,0.08)";
+        row.style.borderLeft = "3px solid var(--success)";
+      }
       row.innerHTML = `
-                <td><strong>${c.competencia}</strong></td>
+                <td><strong style="${c.status === "PAGO" ? "color: var(--success);" : ""}">${c.competencia}</strong></td>
                 <td>${c.vencimento.split("-").reverse().join("/")}</td>
                 <td>${formatarMoeda(c.valor)}</td>
                 <td><span class="badge-pagamento ${statusClass}">${c.status}</span></td>
@@ -764,6 +871,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (idx !== -1) {
       const cob = cobrancas[idx];
+
+      // PROTEÇÃO CONTRA PAGAMENTO DUPLO: verifica se já existe outra cobrança PAGA
+      // com a mesma competência para o mesmo aluno (diferente do id em edição)
+      const jaExistePago = cobrancas.some(
+        (c) =>
+          c.alunoId === cob.alunoId &&
+          c.competencia === competencia &&
+          c.status === "PAGO" &&
+          String(c.id) !== String(cobrancaId)
+      );
+      if (jaExistePago) {
+        mostrarToast(`⚠️ A competência ${competencia} já foi paga para este aluno!`, "error");
+        return;
+      }
+
       cob.status = "PAGO";
       cob.dataPagamento = dataFormatada;
       localStorage.setItem("cobrancas", JSON.stringify(cobrancas));
@@ -790,7 +912,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       localStorage.setItem("pagamentos", JSON.stringify(pagamentos));
 
-      mostrarToast("Pagamento registrado com sucesso!");
+      mostrarToast("✅ Pagamento registrado com sucesso!");
       exibirExtratoAluno(alunoId); // Atualiza o modal do extrato
       carregarAlunos(); // Atualiza as tabelas de fundo no financeiro
       atualizarDashboard();
@@ -1109,24 +1231,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (idx !== -1) {
       const cob = cobrancas[idx];
+
+      // ✅ PROTEÇÃO CONTRA PAGAMENTO DUPLO
+      // Verifica tanto o status direto quanto duplicatas cruzadas
+      if (cob.status === "PAGO") {
+        mostrarToast(`⚠️ ${cob.competencia} já está registrado como pago!`, "error");
+        return;
+      }
+      const jaExistePago = cobrancas.some(
+        (c) =>
+          c.alunoId === cob.alunoId &&
+          c.competencia === cob.competencia &&
+          c.status === "PAGO" &&
+          String(c.id) !== String(cobrancaId)
+      );
+      if (jaExistePago) {
+        mostrarToast(`⚠️ Já existe pagamento de ${cob.competencia} para este aluno!`, "error");
+        return;
+      }
+
       cob.status = "PAGO";
       cob.dataPagamento = dataFormatada;
 
-      // Registra no histórico de pagamentos
+      // Registra no histórico de pagamentos (upsert: atualiza se já existir)
       let pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
-      pagamentos.push({
-        id: Date.now(),
-        alunoId: cob.alunoId,
-        nome: cob.nome,
-        valor: limparMoeda(cob.valor),
-        data: dataFormatada,
-        referencia: cob.competencia,
-      });
+      const pIdx = pagamentos.findIndex(
+        (p) => p.alunoId === cob.alunoId && p.referencia === cob.competencia
+      );
+      if (pIdx !== -1) {
+        pagamentos[pIdx].data = dataFormatada;
+        pagamentos[pIdx].valor = limparMoeda(cob.valor);
+      } else {
+        pagamentos.push({
+          id: Date.now(),
+          alunoId: cob.alunoId,
+          nome: cob.nome,
+          valor: limparMoeda(cob.valor),
+          data: dataFormatada,
+          referencia: cob.competencia,
+        });
+      }
 
       localStorage.setItem("pagamentos", JSON.stringify(pagamentos));
       localStorage.setItem("cobrancas", JSON.stringify(cobrancas));
 
-      mostrarToast("Pagamento recebido com sucesso!");
+      mostrarToast("✅ Pagamento de " + cob.competencia + " recebido!");
       carregarAlunos();
       atualizarDashboard();
 
