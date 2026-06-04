@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sou Fitness Dashboard</title>
 
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="alunos.css" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
@@ -16,144 +16,69 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
 
+  <style>
+    .container { display: flex; min-height: 100vh; }
+    #menu { width: 260px; background: #111; min-height: 100vh; }
+    main { flex: 1; padding: 30px; background: var(--bg); overflow-y: auto; color: white; }
+    h1, h2, h3 { color: white; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    .card-stats { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); transition: transform 0.2s; }
+    .card-stats:hover { transform: translateY(-5px); }
+    .card-stats h3 { font-size: 0.85rem; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-stats p { font-size: 1.6rem; font-weight: 700; margin: 0; color: var(--primary); }
+  </style>
+
   <body>
     <div class="container">
-      <aside class="sidebar">
-        <div class="logo">
-          <h1>SOU FITNESS</h1>
-          <p>CONECTE-SE COM SUA FORÇA</p>
-        </div>
-
-        <nav>
-          <ul>
-            <li class="active">Dashboard</li>
-
-            <a href="treinamentos.html"></a>
-            <li>Treinamento</li>
-
-            <a href="/alunos.html">
-              <li>Cadastro de Alunos</li>
-            </a>
-            <a href="/alunosativos.html">
-              <li>Alunos Ativos</li>
-            </a>
-
-            <a href="/financeiro.html"></a>
-            <li>Financeiro</li>
-            </ul></nav>
+      <div id="menu"></div>
             
-            
-
-
-
-
-
-
-
-            <!-- <a href="/Despesas.html">
-                        <li>Despesas</li>
-                    </a> -->
-            <!-- <a href="/Relatorios.html">
-                        <li>Relatórios</li>     
-                    </a> -->
-
-            <!-- <li>Agenda</li> -->
-            <!-- <li>Comunicação</li>
-            <li>Configurações</li>
-          </ul>
-        </nav> -->
-      </aside>
-
       <main>
-        <header class="topo">
-          <div>
-            <h2>Olá, Gregory 👋</h2>
-            <span>Veja o resumo geral da sua academia hoje.</span>
-          </div>
-        </header>
+          <header>
+            <h1>Dashboard Sou Fitness</h1>
+            <p>Visão geral do desempenho da sua academia</p>
+          </header>
 
-        <section class="cards">
-          <div class="card">
-            <h4>FATURAMENTO MENSAL</h4>
-            <h2>R$ 125.430,00</h2>
-            <p class="verde">▲ 12,5%</p>
-          </div>
-
-          <div class="card">
-            <h4>DESPESAS</h4>
-            <h2>R$ 48.250,00</h2>
-            <p class="vermelho">▲ 8,3%</p>
-          </div>
-
-          <div class="card">
-            <h4>LUCRO LÍQUIDO</h4>
-            <h2>R$ 77.180,00</h2>
-            <p class="verde">▲ 15,7%</p>
-          </div>
-
-          <div class="card">
-            <h4>FLUXO DE CAIXA</h4>
-            <h2>R$ 68.900,00</h2>
-            <p class="verde">▲ 10,2%</p>
-          </div>
-        </section>
-
-        <section class="graficos">
-          <div class="grafico-card">
-            <h3>Faturamento x Despesas</h3>
-            <canvas id="financeiro"></canvas>
-          </div>
-
-          <div class="grafico-card">
-            <h3>Fluxo de Caixa</h3>
-            <canvas id="caixa"></canvas>
-          </div>
-        </section>
-
-        <section class="inferior">
-          <div class="card-grande">
-            <h3>Alunos Ativos</h3>
-
-            <div class="numero">1.245</div>
-
-            <div class="barra">
-              <div class="barra-fill"></div>
-            </div>
-
-            <div class="info">
-              <div>
-                <strong>128</strong>
-                <span>Novos alunos</span>
+          <div class="dashboard-grid">
+              <div class="card-stats">
+                  <h3>👥 Alunos Ativos</h3>
+                  <p id="alunosAtivos">0</p>
               </div>
-
-              <div>
-                <strong>23</strong>
-                <span>Cancelamentos</span>
+              <div class="card-stats">
+                  <h3>💵 Recebido no Mês</h3>
+                  <p id="receitaMensal">R$ 0,00</p>
               </div>
-            </div>
+              <div class="card-stats">
+                  <h3>💰 A Receber (Mês)</h3>
+                  <p id="totalPendenteMes">R$ 0,00</p>
+              </div>
+              <div class="card-stats" style="border-color: #EF4444;">
+                  <h3>⚠️ Inadimplentes</h3>
+                  <p id="totalInadimplentes" style="color: #EF4444;">R$ 0,00</p>
+              </div>
+              <div class="card-stats">
+                  <h3>📈 Receita Prevista</h3>
+                  <p id="receitaPrevista">R$ 0,00</p>
+              </div>
           </div>
 
-          <div class="card-grande">
-            <h3>Mensalidades Pendentes</h3>
-
-            <div class="numero">R$ 18.650</div>
-
-            <div class="info">
-              <div>
-                <strong>87</strong>
-                <span>Pendências</span>
+          <div class="card">
+              <h2>Distribuição por Plano</h2>
+              <div style="max-width: 400px; margin: 0 auto;">
+                  <canvas id="graficoPlanos"></canvas>
               </div>
-
-              <div>
-                <strong>62</strong>
-                <span>Inadimplentes</span>
-              </div>
-            </div>
           </div>
-        </section>
       </main>
     </div>
 
+    <!-- Linkando o script para carregar as estatísticas -->
     <script src="script.js"></script>
+  
+<script>
+fetch("menu.html")
+  .then(response => response.text())
+  .then(data => {
+    document.getElementById("menu").innerHTML = data;
+  });
+</script>
   </body>
 </html>

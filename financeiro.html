@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sou Fitness Dashboard</title>
+
+    <link rel="stylesheet" href="alunos.css" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+
+  <style>
+    .container { display: flex; min-height: 100vh; }
+    #menu { width: 260px; background: #111; min-height: 100vh; }
+    main { flex: 1; padding: 30px; background: var(--bg); overflow-y: auto; color: white; }
+    h1, h2, h3 { color: white; }
+    .filtros-pagamento { margin-bottom: 20px; display: flex; gap: 10px; }
+    .btn-filtro { padding: 8px 15px; border-radius: 5px; border: 1px solid var(--border); background: var(--card); color: white; cursor: pointer; text-decoration: none; font-size: 14px; }
+    .btn-filtro:hover { background: #1a2230; }
+    .financeiro-section { margin-top: 30px; }
+    .financeiro-section h2 { font-size: 1.2rem; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
+    .status-hoje { border-left: 4px solid var(--primary); }
+    .status-atraso { border-left: 4px solid #EF4444; }
+  </style>
+
+  <body>
+    <div class="container">
+      <div id="menu"></div>
+
+      <main>
+        <header>
+          <h1>Financeiro</h1>
+          <p>Controle de mensalidades e recebimentos.</p>
+        </header>
+
+        <div class="card" style="margin-top: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 20px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin: 0;">Fluxo de Recebimentos</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="buscaNome" placeholder="🔍 Aluno..." style="max-width: 150px;">
+                    
+                    <select id="filtroMes" style="max-width: 120px;">
+                        <option value="01">Janeiro</option>
+                        <option value="02">Fevereiro</option>
+                        <option value="03">Março</option>
+                        <option value="04">Abril</option>
+                        <option value="05">Maio</option>
+                        <option value="06">Junho</option>
+                        <option value="07">Julho</option>
+                        <option value="08">Agosto</option>
+                        <option value="09">Setembro</option>
+                        <option value="10">Outubro</option>
+                        <option value="11">Novembro</option>
+                        <option value="12">Dezembro</option>
+                    </select>
+
+                    <input type="number" id="filtroAno" placeholder="Ano" style="max-width: 100px;">
+
+                    <div class="filtros-pagamento" style="margin-bottom: 0;">
+                        <a href="financeiro.html?filtro=Ativo" class="btn-filtro" style="border-color: var(--success);">Ativos</a>
+                        <a href="financeiro.html" class="btn-filtro">Todos</a>
+                    </div>
+                    <button onclick="window.print()" class="btn-limpar" style="padding: 10px 15px;">🖨️ Imprimir Relatório</button>
+                    <button onclick="verificarGeracaoMensalidades()" class="btn-filtro" style="background: #4F46E5; border: none;">🔍 Testar Julho</button>
+                </div>
+            </div>
+            <div class="dashboard-grid">
+                <div class="card-stats">
+                    <h3>💵 Recebido</h3>
+                    <p id="receitaMensal">R$ 0,00</p>
+                </div>
+                <div class="card-stats">
+                    <h3>💰 A Receber</h3>
+                    <p id="totalPendenteMes">R$ 0,00</p>
+                </div>
+                <div class="card-stats" style="border-color: #EF4444;">
+                    <h3>⚠️ Inadimplência (Histórico)</h3>
+                    <p id="totalInadimplentes" style="color: #EF4444;">R$ 0,00</p>
+                </div>
+                <div class="card-stats">
+                    <h3>📈 Receita Prevista (Mês)</h3>
+                    <p id="receitaPrevista">R$ 0,00</p>
+                </div>
+            </div>
+          </div>
+          
+          <!-- Seção: Receber Hoje -->
+          <div class="financeiro-section">
+            <h2>📅 Receber Hoje</h2>
+            <table>
+                <thead>
+                    <tr><th>Aluno</th><th>Plano</th><th>Valor</th><th>Vencimento</th><th>Ação</th></tr>
+                </thead>
+                <tbody id="tabelaHoje"></tbody>
+            </table>
+          </div>
+
+          <!-- Seção: Em Atraso -->
+          <div class="financeiro-section">
+            <h2 style="color: #EF4444;">🚨 Em Atraso</h2>
+            <table>
+                <thead>
+                    <tr><th>Aluno</th><th>Plano</th><th>Valor</th><th>Vencimento / Meses</th><th>Ação</th></tr>
+                </thead>
+                <tbody id="tabelaAtraso"></tbody>
+            </table>
+          </div>
+
+          <!-- Seção: Próximos Recebimentos -->
+          <div class="financeiro-section">
+            <h2>⏭️ Próximos Recebimentos</h2>
+            <table>
+                <thead>
+                    <tr><th>Aluno</th><th>Plano</th><th>Valor</th><th>Vencimento</th><th>Ação</th></tr>
+                </thead>
+                <tbody id="tabelaProximos"></tbody>
+            </table>
+          </div>
+
+          <!-- Listagem Geral (Opcional, mantida para compatibilidade) -->
+          <div class="financeiro-section" style="margin-top: 50px; opacity: 0.6;">
+              <h3>🔍 Listagem Completa</h3>
+              <table>
+                <tbody id="tabelaAlunos"></tbody>
+              </table>
+          </div>
+        </div>
+      </main>
+
+      <!-- Modal de Extrato Financeiro -->
+      <div id="modalExtrato" class="modal-extrato">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 id="extratoNomeAluno" style="margin:0;">Extrato Financeiro</h2>
+            <button onclick="document.getElementById('modalExtrato').style.display='none'" class="btn-fechar">Fechar</button>
+          </div>
+          <div class="resumo-extrato">
+            <div class="resumo-item"><small>Total Pago (Ano)</small><strong id="extratoPago">R$ 0,00</strong></div>
+            <div class="resumo-item"><small>Total Atrasado</small><strong id="extratoAtrasado" style="color: #EF4444;">R$ 0,00</strong></div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Competência</th><th>Vencimento</th><th>Valor</th><th>Status</th><th>Pagamento</th></tr>
+            </thead>
+            <tbody id="extratoTabelaCorpo"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+      fetch("menu.html")
+        .then(response => response.text())
+        .then(data => {
+          document.getElementById("menu").innerHTML = data;
+        });
+    </script>
+  </body>
+</html>

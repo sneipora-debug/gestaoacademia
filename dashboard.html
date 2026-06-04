@@ -21,37 +21,7 @@
 
     <div class="container">
 
-        <!-- MENU -->
-
-        <aside class="sidebar">
-
-            <div class="logo">
-
-                <h1>SOU FITNESS</h1>
-
-                <span>
-                    Conecte-se com sua força
-                </span>
-
-            </div>
-
-            <nav>
-
-                <ul>
-
-                    <li class="ativo">
-                        Dashboard
-                    </li>
-
-                    <li onclick="location.href='alunos.html'">
-                        Cadastro de Alunos
-                    </li>
-
-                </ul>
-
-            </nav>
-
-        </aside>
+        <div id="menu"></div>
 
         <!-- CONTEÚDO -->
 
@@ -198,6 +168,13 @@
     </div>
 
     <script src="dashboard.js"></script>
+    <script>
+      fetch("menu.html")
+        .then(response => response.text())
+        .then(data => {
+          document.getElementById("menu").innerHTML = data;
+        });
+    </script>
 
 </body>
 

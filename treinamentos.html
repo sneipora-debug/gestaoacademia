@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sou Fitness Dashboard</title>
+
+    <link rel="stylesheet" href="alunos.css" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+
+  <style>
+    .container { display: flex; min-height: 100vh; }
+    #menu { width: 260px; background: #111; min-height: 100vh; }
+    main { flex: 1; padding: 30px; background: var(--bg); overflow-y: auto; color: white; }
+    h1, h2, h3 { color: white; }
+  </style>
+
+  <body>
+    <div class="container">
+      <div id="menu"></div>
+
+      <main>
+        <header>
+          <h1>Treinamentos</h1>
+          <p>Gestão de fichas e rotinas de treino.</p>
+        </header>
+
+        <div class="card" style="margin-top: 20px;">
+          <h2>Fichas de Treino</h2>
+          <p>Em desenvolvimento...</p>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      fetch("menu.html")
+        .then(response => response.text())
+        .then(data => {
+          document.getElementById("menu").innerHTML = data;
+        });
+    </script>
+  </body>
+</html>
