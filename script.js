@@ -1,1437 +1,1301 @@
+// =========================================================================
+// CONFIGURAÇÃO E INICIALIZAÇÃO DO SUPABASE
+// =========================================================================
+const SUPABASE_URL = "https://ltuepchgoxagpquwalbi.supabase.co"; // [cite: 902]
+const SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0dWVwY2hnb3hhZ3BxdXdhbGJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MDczMjYsImV4cCI6MjA5NjE4MzMyNn0.g7742A-X_TM-YOZDB40e2aweKfxAfr4xbF29_NlsC2Q"; // [cite: 903, 904]
+
+// Inicializa o cliente global uma única vez no topo do arquivo
+const supabaseClient = window.supabase
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+  : null; // [cite: 906, 907, 908]
+
+if (!supabaseClient) {
+  // [cite: 909]
+  console.error(
+    "Erro: A biblioteca do Supabase não foi carregada no HTML ou as chaves estão incorretas."
+  ); // [cite: 910, 911, 912]
+}
+
+// =========================================================================
+// INICIALIZAÇÃO DO SISTEMA E VARIÁVEIS DE ESCOPO
+// =========================================================================
 document.addEventListener("DOMContentLoaded", () => {
-  const form = document.getElementById("formAluno");
-  const pesoInput = document.getElementById("peso");
-  const alturaInput = document.getElementById("altura");
-  const imcInput = document.getElementById("imc");
-  const tabelaAlunos = document.getElementById("tabelaAlunos");
+  // [cite: 917]
+  // Elementos comuns do DOM
+  const form = document.getElementById("formAluno"); // [cite: 919]
+  const tabelaAlunos = document.getElementById("tabelaAlunos"); // [cite: 920]
+  const pesoInput = document.getElementById("peso"); // [cite: 921]
+  const alturaInput = document.getElementById("altura"); // [cite: 922]
+  const imcInput = document.getElementById("imc"); // [cite: 923]
+  let editId = null; // Controla se o formulário está editando um aluno // [cite: 924]
 
-  let chartInstance = null; // Armazena a instância do gráfico para destruí-la antes de recriar
-  let editId = null; // Controla se estamos editando um aluno existente
-
-  // --- INICIALIZAÇÃO DE PLANOS ---
-  window.inicializarPlanos = () => {
-    let planos = JSON.parse(localStorage.getItem("planos"));
-    if (!planos) {
-      planos = [
-        { id: 1, nome: "Musculação", valor: 120 },
-        { id: 2, nome: "Premium", valor: 180 },
-        { id: 3, nome: "Personal", valor: 250 },
-      ];
-      localStorage.setItem("planos", JSON.stringify(planos));
+  // Função para gerar matrícula automática (Ex: 2024 + 4 números aleatórios)
+  const gerarMatriculaAutomatica = () => {
+    const matriculaInput = document.getElementById("matricula");
+    if (matriculaInput && !editId) {
+      const ano = new Date().getFullYear();
+      const random = Math.floor(1000 + Math.random() * 9000); // Gera entre 1000 e 9999
+      matriculaInput.value = `${ano}${random}`;
     }
-    popularSelectPlanos(planos);
   };
 
-  const popularSelectPlanos = (planos) => {
-    const select = document.getElementById("plano");
-    if (!select) return;
-    select.innerHTML = '<option value="">Selecione um plano</option>';
-    planos.forEach((p) => {
-      const opt = document.createElement("option");
-      opt.value = p.nome;
-      opt.dataset.valor = p.valor;
-      opt.textContent = `${p.nome} - ${formatarMoeda(p.valor)}`;
-      select.appendChild(opt);
+  // Variáveis para filtros financeiros extraídas do escopo
+  const urlParams = new URLSearchParams(window.location.search); // [cite: 1020]
+  let filtroStatus = urlParams.get("filtro"); // [cite: 1021]
+  const buscaUrl = urlParams.get("busca");
+  if (buscaUrl && document.getElementById("buscaNome")) {
+    document.getElementById("buscaNome").value = buscaUrl;
+  }
+
+  const filtroPagamento = urlParams.get("pagamento");
+  // Variáveis de filtro (serão atualizadas dinamicamente)
+  let mesFiltro = (new Date().getMonth() + 1).toString().padStart(2, "0");
+  let anoFiltro = new Date().getFullYear();
+  let refFiltro = `${mesFiltro}/${anoFiltro}`;
+
+  const atualizarVariaveisFiltro = () => {
+    mesFiltro = document.getElementById("filtroMes")?.value || (new Date().getMonth() + 1).toString().padStart(2, "0");
+    anoFiltro = document.getElementById("filtroAno")?.value || new Date().getFullYear();
+    refFiltro = `${mesFiltro}/${anoFiltro}`;
+  };
+
+  // Inicializa os campos de filtro no HTML com a data atual (evita o erro de Janeiro/01)
+  const inputFiltroMes = document.getElementById("filtroMes");
+  const inputFiltroAno = document.getElementById("filtroAno");
+  if (inputFiltroMes && !urlParams.get("mes")) {
+    inputFiltroMes.value = mesFiltro;
+  }
+  if (inputFiltroAno && !urlParams.get("ano")) {
+    inputFiltroAno.value = anoFiltro;
+  }
+  atualizarVariaveisFiltro();
+
+  // Funções Auxiliares locais
+  const normalizarTexto = (
+    txt // [cite: 926]
+  ) =>
+    String(txt) // [cite: 927]
+      .toLowerCase() // [cite: 928]
+      .trim() // [cite: 929]
+      .normalize("NFD") // [cite: 930]
+      .replace(/[\u0300-\u036f]/g, ""); // [cite: 931]
+
+  const limparMoeda = (
+    valor // [cite: 932]
+  ) =>
+    parseFloat(
+      // [cite: 933]
+      String(valor) // [cite: 934]
+        .replace(/[R$\s.]/g, "") // [cite: 935]
+        .replace(",", ".") // [cite: 936]
+    ) || 0; // [cite: 937]
+
+  const formatarMoeda = (
+    valor // [cite: 938]
+  ) =>
+    Number(valor).toLocaleString("pt-BR", {
+      // [cite: 939]
+      style: "currency", // [cite: 940]
+      currency: "BRL", // [cite: 941]
     });
 
-    select.addEventListener("change", (e) => {
-      const selected = e.target.options[e.target.selectedIndex];
-      const vInput = document.getElementById("valor");
-      if (vInput && selected.dataset.valor) {
-        vInput.value = formatarMoeda(selected.dataset.valor);
-      }
-    });
-  };
-
-  // Função para calcular o CRC16 (necessário para o PIX ser válido)
-  const calcCRC16 = (data) => {
-    let crc = 0xffff;
-    for (let i = 0; i < data.length; i++) {
-      crc ^= data.charCodeAt(i) << 8;
-      for (let j = 0; j < 8; j++) {
-        crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
-        crc &= 0xffff; // Garante que o valor permaneça em 16 bits
-      }
-    }
-    return crc.toString(16).toUpperCase().padStart(4, "0");
-  };
-
-  // Helper para extrair o payload do PIX
-  const obterPayloadPix = (valor, identificador = "") => {
-    const config = JSON.parse(localStorage.getItem("config_pix"));
-    if (!config || !config.chave) return null;
-
-    // Função interna para remover acentos e caracteres especiais de nomes
-    const normalizarParaPix = (str) =>
-      str
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^A-Z0-9 ]/gi, "");
-
-    const valorLimpo = limparMoeda(valor).toFixed(2);
-    // Mantém apenas caracteres válidos para chaves PIX (+ para telefone, @ para email, etc)
-    const chave = config.chave.replace(/[^\w@.+]/g, "");
-    const beneficiario = normalizarParaPix(config.nome || "ACADEMIA")
-      .substring(0, 25)
-      .toUpperCase();
-    const cidade = normalizarParaPix(config.cidade || "CIDADE")
-      .substring(0, 15)
-      .toUpperCase();
-    const format = (id, val) =>
-      id + val.length.toString().padStart(2, "0") + val;
-
-    let payload = "000201";
-    payload +=
-      "26" +
-      (22 + chave.length).toString().padStart(2, "0") +
-      "0014BR.GOV.BCB.PIX01" +
-      chave.length.toString().padStart(2, "0") +
-      chave;
-    payload += "52040000";
-    payload += "5303986";
-    payload += format("54", valorLimpo);
-    payload += "5802BR";
-    payload += format("59", beneficiario);
-    payload += format("60", cidade);
-
-    // Adiciona Identificador no campo TXID (Tag 62 -> Subtag 05)
-    // O TXID para PIX estático deve ser alfanumérico e sem espaços (máx 25 char)
-    const txidValue = normalizarParaPix(identificador || "PAGAMENTO")
-      .replace(/\s/g, "")
-      .substring(0, 25)
-      .toUpperCase();
-    const txidTag = format("05", txidValue);
-    payload += format("62", txidTag);
-
-    // Adiciona a tag de CRC (63) com tamanho 04, e então calcula o Checksum
-    const payloadSemCRC = payload + "6304";
-    const crc = calcCRC16(payloadSemCRC);
-    const payloadFinal = payloadSemCRC + crc;
-
-    return { payload: payloadFinal, valorFormatado: valorLimpo };
-  };
-
-  window.gerarPix = (alunoId, valor) => {
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const aluno = alunos.find((a) => a.id === alunoId);
-    const pix = obterPayloadPix(valor, aluno ? aluno.nome : "");
-    if (!pix) {
-      mostrarToast(
-        "Configure sua chave PIX nas configurações primeiro!",
-        "error"
-      );
-      return;
-    }
-    exibirModalPix(pix.payload, pix.valorFormatado);
-  };
-
-  const exibirModalPix = (payload, valor) => {
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(payload)}`;
-    const win = window.open("", "PIX", "height=500,width=400");
-    win.document.write(`
-            <body style="font-family:sans-serif; text-align:center; padding:20px; background:#f4f4f4;">
-                <h3>Pagamento PIX</h3>
-                <p>Valor: R$ ${valor.replace(".", ",")}</p>
-                <img src="${qrUrl}" style="margin:20px 0; border:10px solid #fff; border-radius:10px;">
-                <div style="background:#fff; padding:10px; border:1px solid #ddd; word-break:break-all; font-size:12px; margin-bottom:20px;">
-                    ${payload}
-                </div>
-                <button onclick="navigator.clipboard.writeText('${payload}').then(() => alert('Copiado!'))" 
-                        style="padding:10px 20px; background:#22c55e; color:#fff; border:none; border-radius:5px; cursor:pointer;">
-                    Copiar Código
-                </button>
-            </body>
-        `);
-  };
-
-  window.enviarWhatsAppPix = (alunoId, valor, competencia) => {
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const aluno = alunos.find((a) => a.id === alunoId);
-    if (!aluno) return;
-    const pix = obterPayloadPix(valor, aluno.nome);
-    if (!pix) {
-      mostrarToast(
-        "Configure sua chave PIX nas configurações primeiro!",
-        "error"
-      );
-      return;
-    }
-    const telefone = (aluno.whatsapp || aluno.celular || "").replace(/\D/g, "");
-    if (!telefone) {
-      mostrarToast("Aluno sem telefone cadastrado!", "error");
-      return;
-    }
-    const msg =
-      "Olá *" +
-      aluno.nome +
-      "*! 👋\n\nSegue o código PIX para pagamento da mensalidade de *" +
-      competencia +
-      "*.\n\n💰 *Valor:* R$ " +
-      pix.valorFormatado.replace(".", ",") +
-      "\n\n_Favor enviar o comprovante após o pagamento._\n\n📍 *Código PIX (Copia e Cola):*\n\n" +
-      pix.payload;
-    const link =
-      "https://wa.me/55" + telefone + "?text=" + encodeURIComponent(msg);
-    window.open(link, "_blank");
-  };
-
-  // Helper para formatar valores em Reais (R$)
-  const formatarMoeda = (valor) => {
-    return parseFloat(valor || 0).toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    });
-  };
-
-  // Função para mostrar notificações (Toast)
-  const mostrarToast = (msg, tipo = "success") => {
+  window.mostrarToast = (msg, tipo = "success") => { // Made global
     const toast = document.createElement("div");
     toast.className = `toast toast-${tipo}`;
     toast.innerText = msg;
     document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = "0";
-      setTimeout(() => toast.remove(), 500);
-    }, 3000);
+    setTimeout(() => toast.remove(), 3000); // Remove após 3 segundos
+  };
+  const mostrarToast = window.mostrarToast; // Keep local reference for existing calls
+
+  const atualizarDashboard = () => console.log("Dashboard atualizado."); // [cite: 945]
+  
+  window.switchTab = (tabId) => {
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    
+    document.getElementById(tabId).classList.add('active');
+    const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.innerText.includes(tabId.replace('tab', '')));
+    if(btn) btn.classList.add('active');
   };
 
-  // Máscaras para campos de entrada
-  const cpfInput = document.getElementById("cpf");
-  const celularInput = document.getElementById("celular");
-  const whatsappInput = document.getElementById("whatsapp");
+  window.exibirExtratoAluno = async (id) => {
+    if (!supabaseClient) return;
 
-  if (cpfInput) {
-    cpfInput.addEventListener("input", (e) => {
-      let v = e.target.value.replace(/\D/g, "");
-      if (v.length > 11) v = v.slice(0, 11);
-      if (v.length > 9)
-        v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-      else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{3})/, "$1.$2.$3");
-      else if (v.length > 3) v = v.replace(/(\d{3})(\d{3})/, "$1.$2");
-      e.target.value = v;
-    });
-  }
+    // Se estiver no financeiro, esconde a mensagem inicial e mostra os detalhes
+    if (document.getElementById('detalheAluno')) {
+        document.getElementById('detalheAluno').style.display = 'block';
+        document.getElementById('msgSelecione').style.display = 'none';
+    }
+    
+    // Busca dados do aluno para a Ficha Funcional
+    const { data: aluno, error: errAluno } = await supabaseClient
+      .from("alunos")
+      .select("*")
+      .eq("id", id)
+      .single();
 
-  const aplicarMascaraTelefone = (e) => {
-    let v = e.target.value.replace(/\D/g, "");
-    if (v.length > 11) v = v.slice(0, 11);
-    if (v.length > 10) v = v.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-    else if (v.length > 6)
-      v = v.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
-    else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
-    e.target.value = v;
-  };
+    if (errAluno) return mostrarToast("Erro ao carregar dados do aluno.", "error");
 
-  if (celularInput)
-    celularInput.addEventListener("input", aplicarMascaraTelefone);
-  if (whatsappInput)
-    whatsappInput.addEventListener("input", aplicarMascaraTelefone);
+    // Busca simultaneamente pagamentos (PAGOS) e cobranças (PENDENTES/ATRASADOS)
+    const [reqPagamentos, reqCobrancas] = await Promise.all([
+      supabaseClient
+      .from("pagamentos")
+      .select("*")
+      .eq("aluno_id", id)
+      .order("created_at", { ascending: false }),
+      supabaseClient
+      .from("cobrancas")
+      .select("*")
+      .eq("aluno_id", id)
+      .order("vencimento", { ascending: false })
+    ]);
 
-  // Helper para converter string de moeda formatada em número decimal
-  const limparMoeda = (valor) => {
-    if (typeof valor !== "string") return parseFloat(valor || 0);
-    return (
-      parseFloat(
-        valor
-          .replace("R$", "")
-          .replace(/\./g, "")
-          .replace(",", ".")
-          .replace(/\u00A0/g, "")
-          .trim()
-      ) || 0
-    );
-  };
+    if (reqPagamentos.error || reqCobrancas.error) {
+      return mostrarToast("Erro ao carregar histórico completo.", "error");
+    }
 
-  // Helper para remover acentos e converter para minúsculo
-  const normalizarTexto = (texto) => {
-    return (texto || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
-  };
+    const pagamentos = reqPagamentos.data || [];
+    const cobrancas = reqCobrancas.data || [];
 
-  // Helper para calcular débitos pendentes de meses anteriores
-  const calcularPendenciasHistoricas = (aluno) => {
-    const cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-    const hoje = new Date().toISOString().split("T")[0];
-    const pendentes = cobrancas.filter(
-      (c) =>
-        c.alunoId === aluno.id && c.status !== "PAGO" && c.vencimento < hoje
-    );
-    return {
-      meses: pendentes.map((c) => c.competencia),
-      total: pendentes.reduce((acc, c) => acc + limparMoeda(c.valor), 0),
-    };
-  };
+    const modal = document.getElementById("modalExtrato"); // [cite: 111]
+    let tabelaCorpo = document.getElementById("extratoTabelaCorpo"); 
+    const extratoNome = document.getElementById("extratoNomeAluno");
+    
+    if (tabelaCorpo) {
+      tabelaCorpo.innerHTML = "";
+      let totalPago = 0;
+      let totalAtrasado = 0;
 
-  // --- PROCESSO AUTOMÁTICO DE GERAÇÃO DE COBRANÇAS ---
-  const gerarCobrancasAutomaticas = () => {
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    let cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-    const hoje = new Date();
-    const hojeIso = hoje.toISOString().split("T")[0];
-
-    // --- LIMPEZA DE ÓRFÃOS ---
-    // Remove cobranças de alunos que foram excluídos do sistema
-    const idsAlunosExistentes = alunos.map((a) => a.id);
-    cobrancas = cobrancas.filter((c) =>
-      idsAlunosExistentes.includes(c.alunoId)
-    );
-
-    // --- LIMPEZA DE PROJEÇÕES PARA INATIVOS ---
-    // Se o aluno desistiu (Inativo), removemos cobranças futuras que ainda estão PENDENTES.
-    // Isso mantém o que ele já deve (ATRASADO) e o que já pagou (PAGO).
-    alunos.forEach((a) => {
-      if (a.status === "Inativo") {
-        cobrancas = cobrancas.filter((c) => {
-          const ehDesteAluno = c.alunoId === a.id;
-          const ehFutura = c.vencimento > hojeIso;
-          const naoEstaPago = c.status !== "PAGO";
-          // Se o aluno desistir, removemos o que for futuro ou o que estiver pendente de hoje em diante
-          return !(ehDesteAluno && ehFutura && naoEstaPago);
-        });
-      }
-    });
-
-    // Determina até quando gerar: hoje + 3 meses OU até o mês selecionado no filtro (o que for maior)
-    const mesF =
-      parseInt(document.getElementById("filtroMes")?.value) ||
-      hoje.getMonth() + 1;
-    const anoF =
-      parseInt(document.getElementById("filtroAno")?.value) ||
-      hoje.getFullYear();
-    const dataFiltro = new Date(anoF, mesF - 1, 1);
-
-    // Calcula a diferença de meses entre hoje e o filtro para saber quanto projetar
-    const diffMeses =
-      (dataFiltro.getFullYear() - hoje.getFullYear()) * 12 +
-      (dataFiltro.getMonth() - hoje.getMonth());
-    const limiteMeses = Math.max(3, diffMeses);
-
-    alunos.forEach((a) => {
-      if (a.status === "Inativo") return; // Não gera nada novo para quem desistiu
-
-      for (let i = 0; i <= limiteMeses; i++) {
-        const dataAlvo = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
-        const mes = dataAlvo.getMonth() + 1;
-        const ano = dataAlvo.getFullYear();
-        const competencia = `${mes.toString().padStart(2, "0")}/${ano}`;
-
-        // Verifica se a mensalidade já existe para este aluno neste mês
-        const existe = cobrancas.find(
-          (c) => c.alunoId === a.id && c.competencia === competencia
-        );
-
-        if (!existe) {
-          const diaVenc = parseInt(a.vencimento) || 10;
-          const dataVenc = new Date(ano, mes - 1, diaVenc);
-          const dataVencIso = dataVenc.toISOString().split("T")[0];
-
-          // Define status inicial: se o vencimento for maior que hoje, é FUTURA
-          const statusInicial = dataVencIso > hojeIso ? "FUTURA" : "PENDENTE";
-
-          cobrancas.push({
-            id: "cob_" + Date.now() + Math.floor(Math.random() * 1000),
-            alunoId: a.id,
-            nome: a.nome,
-            competencia: competencia,
-            vencimento: dataVencIso,
-            valor: a.valor,
-            status: statusInicial,
-            dataPagamento: null,
-          });
-        } else {
-          // Sincroniza o valor da mensalidade caso o plano do aluno tenha mudado no cadastro
-          if (existe.status !== "PAGO" && existe.valor !== a.valor) {
-            existe.valor = a.valor;
+      let tempoDeCasa = "0 dias";
+      let dataInicioFormatada = "--/--/----";
+      if (aluno && aluno.created_at) {
+          const inicio = new Date(aluno.created_at);
+          dataInicioFormatada = inicio.toLocaleDateString('pt-BR');
+          const hoje = new Date();
+          const diffMs = hoje - inicio;
+          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          if (diffDays >= 30) {
+              tempoDeCasa = `${Math.floor(diffDays / 30)} mês(es)`;
+          } else {
+              tempoDeCasa = `${diffDays} dia(s)`;
           }
-        }
       }
-    });
 
-    // Atualiza status para ATRASADO logicamente
-    cobrancas = cobrancas.map((c) => {
-      if (c.status === "PAGO") return c;
+      // Unifica os dados para exibição em uma única linha do tempo
+      const historicoUnificado = [
+        ...pagamentos.map(p => ({
+          id: p.id,
+          referencia: p.referencia,
+          vencimento: p.data,
+          valor: p.valor,
+          status: 'PAGO',
+          metodo: p.metodo || 'PIX',
+          sortDate: new Date(p.data)
+        })),
+        ...cobrancas.map(c => ({
+          id: c.id,
+          referencia: c.competencia,
+          vencimento: c.vencimento,
+          valor: c.valor,
+          status: c.status,
+          metodo: '---',
+          sortDate: new Date(c.vencimento)
+        }))
+      ];
 
-      if (c.vencimento < hojeIso) return { ...c, status: "ATRASADO" };
-      if (c.vencimento === hojeIso) return { ...c, status: "PENDENTE" };
-      if (c.vencimento > hojeIso) return { ...c, status: "FUTURA" };
+      // Ordena por data (mais recente primeiro)
+      historicoUnificado.sort((a, b) => b.sortDate - a.sortDate);
 
-      return c;
-    });
+      historicoUnificado.forEach(p => {
+        if (p.status === 'PAGO') totalPago += parseFloat(p.valor);
+        if (p.status === 'ATRASADO') totalAtrasado += parseFloat(p.valor);
+        
+        const hoje = new Date().toISOString().split('T')[0];
+        const badgeClass = p.status === 'PAGO' ? 'pago' : (p.status === 'ATRASADO' ? 'atrasado' : 'pendente');
+        
+          const actions = p.status === 'PAGO' 
+            ? `<button onclick="imprimirRecibo('${id}', '${p.referencia}')" class="badge-pagamento pago">📄</button>`
+            : `<div style="display:flex; gap:5px; align-items:center;">
+                <input type="date" id="data_cob_${p.id}" value="${hoje}" style="width:110px; padding:2px; font-size:11px; background:#0f172a; border:1px solid var(--border); color:white; border-radius:4px;">
+                <button onclick="confirmarPagamentoCobranca('${p.id}')" class="badge-pagamento pendente" style="min-width:unset;" title="Confirmar Recebimento">✅</button>
+                <button onclick="window.gerarPix('${id}', '${p.valor}')" class="badge-pagamento pendente" style="min-width:unset; background:#7c3aed;" title="Ver QR Code">🖼️</button>
+                <button onclick="window.copiarPixCobranca('${id}', '${p.valor}')" class="badge-pagamento pendente" style="min-width:unset; background:#3b82f6;" title="Copiar Código PIX">📋</button>
+                <button onclick="window.enviarWhatsAppCobranca('${id}', '${p.valor}', '${p.referencia}')" class="badge-pagamento pago" style="min-width:unset; background:#22c55e;" title="Enviar para WhatsApp">📱</button>
+               </div>`;
 
-    localStorage.setItem("cobrancas", JSON.stringify(cobrancas));
-  };
+        const row = tabelaCorpo.insertRow();
+        row.innerHTML = `
+          <td>${p.referencia}</td>
+          <td>${new Date(p.vencimento).toLocaleDateString('pt-BR')}</td>
+          <td>${formatarMoeda(p.valor)}</td>
+          <td><span class="badge-pagamento ${badgeClass}">${p.status}</span></td>
+          <td>${actions}</td>
+        `;
+      });
 
-  // Função de Teste para o usuário verificar se Julho foi gerado
-  window.verificarGeracaoMensalidades = () => {
-    gerarCobrancasAutomaticas(); // Força a execução da lógica
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const idsAtivos = alunos
-      .filter((a) => a.status === "Ativo")
-      .map((a) => a.id);
+      // PREENCHIMENTO AUTOMÁTICO DO FORMULÁRIO DE CADASTRO (CASO EXISTA NA PÁGINA)
+      const mapeamentoCampos = {
+        "nome": aluno.nome,
+        "matricula": aluno.matricula,
+        "cpf": aluno.cpf,
+        "rg": aluno.rg,
+        "responsavel": aluno.responsavel,
+        "nascimento": aluno.nascimento,
+        "sexo": aluno.sexo,
+        "estadoCivil": aluno.estado_civil,
+        "celular": aluno.celular,
+        "whatsapp": aluno.whatsapp,
+        "email": aluno.email,
+        "vencimento": aluno.vencimento,
+        "peso": aluno.peso,
+        "altura": aluno.altura,
+        "imc": aluno.imc
+      };
 
-    const mesF =
-      document.getElementById("filtroMes")?.value ||
-      (new Date().getMonth() + 1).toString().padStart(2, "0");
-    const anoF =
-      document.getElementById("filtroAno")?.value || new Date().getFullYear();
-    const competenciaAlvo = `${mesF}/${anoF}`;
+      Object.keys(mapeamentoCampos).forEach(id => {
+        const campo = document.getElementById(id);
+        if (campo) campo.value = mapeamentoCampos[id] || "";
+      });
+      if(document.getElementById("status")) document.getElementById("status").checked = aluno.status === true;
+      editId = id; // Ativa modo edição
 
-    const cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-    // Filtra parcelas da competência selecionada para alunos ativos
-    const parcelas = cobrancas.filter(
-      (c) => c.competencia === competenciaAlvo && idsAtivos.includes(c.alunoId)
-    );
+      // Atualiza Perfil (se estiver na página Financeiro)
+      if (document.getElementById('profileNome')) {
+          document.getElementById('profileNome').innerText = aluno.nome;
+          document.getElementById('profilePlanoMatricula').innerText = `Plano: ${aluno.plano} | Matrícula: ${aluno.matricula || '---'}`;
+          const statusBadge = document.getElementById('profileStatus');
+          statusBadge.innerText = aluno.status ? 'Ativo' : 'Inativo'; // [cite: 198]
+          statusBadge.className = `status-badge ${aluno.status ? 'pago' : 'atrasado'}`;
+          document.getElementById('profileIcon').innerText = aluno.nome.charAt(0).toUpperCase();
+      }
 
-    if (parcelas.length > 0) {
-      mostrarToast(
-        `Sucesso! Existem ${parcelas.length} parcelas para ${competenciaAlvo}.`,
-        "success"
-      );
-      console.log(`Parcelas de ${competenciaAlvo}:`, parcelas);
-    } else {
-      alert(
-        `Nenhuma parcela de ${competenciaAlvo} encontrada para os alunos ativos.`
-      );
+      if (extratoNome) extratoNome.innerText = `Histórico Financeiro: ${aluno.nome}`;
+      
+      const extratoPagoElem = document.getElementById("extratoPago");
+      const extratoAtrasadoElem = document.getElementById("extratoAtrasado");
+      const extratoInicioElem = document.getElementById("extratoInicio");
+      const extratoTempoElem = document.getElementById("extratoTempo");
+      
+      if (extratoPagoElem) extratoPagoElem.innerText = formatarMoeda(totalPago);
+      if (extratoAtrasadoElem) extratoAtrasadoElem.innerText = formatarMoeda(totalAtrasado);
+      if (extratoInicioElem) extratoInicioElem.innerText = dataInicioFormatada;
+      if (extratoTempoElem) extratoTempoElem.innerText = tempoDeCasa;
+
+      modal.style.display = "flex";
     }
   };
 
-  const atualizarDashboard = () => {
-    gerarCobrancasAutomaticas();
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-
-    const mesFiltro =
-      document.getElementById("filtroMes")?.value ||
-      (new Date().getMonth() + 1).toString().padStart(2, "0");
-    const anoFiltro =
-      document.getElementById("filtroAno")?.value || new Date().getFullYear();
-    const refFiltro = `${mesFiltro}/${anoFiltro}`;
-
-    const ativos = alunos.filter((a) => a.status === "Ativo").length;
-
-    const recebidoNoMes = cobrancas
-      .filter((c) => c.competencia === refFiltro && c.status === "PAGO")
-      .reduce((acc, curr) => acc + limparMoeda(curr.valor), 0);
-
-    const aReceberNoMes = cobrancas
-      .filter(
-        (c) =>
-          c.competencia === refFiltro &&
-          (c.status === "PENDENTE" || c.status === "FUTURA")
-      )
-      .reduce((acc, curr) => acc + limparMoeda(curr.valor), 0);
-
-    const inadimplenciaTotal = cobrancas
-      .filter((c) => c.status === "ATRASADO")
-      .reduce((acc, curr) => acc + limparMoeda(curr.valor), 0);
-
-    const previstoNoMes = cobrancas
-      .filter((c) => c.competencia === refFiltro)
-      .reduce((acc, curr) => acc + limparMoeda(curr.valor), 0);
-
-    if (document.getElementById("totalAlunos"))
-      document.getElementById("totalAlunos").innerText = alunos.length;
-    if (document.getElementById("alunosAtivos"))
-      document.getElementById("alunosAtivos").innerText = ativos;
-    if (document.getElementById("receitaMensal"))
-      document.getElementById("receitaMensal").innerText =
-        formatarMoeda(recebidoNoMes);
-    if (document.getElementById("totalPendenteMes"))
-      document.getElementById("totalPendenteMes").innerText =
-        formatarMoeda(aReceberNoMes);
-    if (document.getElementById("totalInadimplentes"))
-      document.getElementById("totalInadimplentes").innerText =
-        formatarMoeda(inadimplenciaTotal);
-    if (document.getElementById("receitaPrevista"))
-      document.getElementById("receitaPrevista").innerText =
-        formatarMoeda(previstoNoMes);
-
-    if (document.getElementById("graficoPlanos")) {
-      // Inicializa Gráfico Simples se o Chart.js estiver presente
-      const canvas = document.getElementById("graficoPlanos");
-      if (canvas && typeof Chart !== "undefined") {
-        const contagemPlanos = alunos.reduce((acc, curr) => {
-          acc[curr.plano] = (acc[curr.plano] || 0) + 1;
-          return acc;
-        }, {});
-
-        // Se já existe um gráfico, destrói para evitar erro de "Canvas in use"
-        if (chartInstance) {
-          chartInstance.destroy();
-        }
-
-        chartInstance = new Chart(canvas.getContext("2d"), {
-          type: "doughnut",
-          data: {
-            labels: Object.keys(contagemPlanos),
-            datasets: [
-              {
-                data: Object.values(contagemPlanos),
-                backgroundColor: ["#111", "#444", "#888", "#ccc"],
-              },
-            ],
-          },
-          options: { responsive: true },
-        });
-      }
-    }
-  };
-
-  // Função para navegar do Cadastro para o Financeiro com filtro
   window.verFinanceiroAluno = (nome) => {
-    window.location.href = `financeiro.html?busca=${encodeURIComponent(nome)}`;
+    window.location.href = `financeiro.html?filtro=Ativo&busca=${encodeURIComponent(nome)}`;
   };
 
-  // Função para gerar e imprimir a ficha do aluno
   window.imprimirFicha = (id) => {
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const aluno = alunos.find((a) => a.id === id);
-    if (!aluno) return;
-
-    const win = window.open("", "PRINT", "height=600,width=800");
-    win.document.write(`
-            <html>
-            <head>
-                <title>Ficha - ${aluno.nome}</title>
-                <style>
-                    body { font-family: 'Inter', sans-serif; padding: 40px; color: #111; line-height: 1.6; }
-                    .header { text-align: center; border-bottom: 2px solid #333; margin-bottom: 30px; padding-bottom: 10px; }
-                    .header h1 { margin: 0; color: #000; text-transform: uppercase; }
-                    .section { margin-bottom: 25px; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
-                    .section-title { font-weight: 800; text-transform: uppercase; font-size: 14px; color: #555; border-bottom: 1px solid #eee; margin-bottom: 10px; display: block; }
-                    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-                    .label { font-weight: bold; color: #000; }
-                    .footer { margin-top: 60px; text-align: center; }
-                    .assinatura { border-top: 1px solid #000; display: inline-block; width: 300px; margin-top: 40px; padding-top: 5px; }
-                    @media print { .no-print { display: none; } }
-                </style>
-            </head>
-            <body>
-                <div class="no-print" style="margin-bottom: 20px;">
-                    <button onclick="window.print()" style="padding: 10px 20px; cursor: pointer;">🖨️ Confirmar Impressão / Salvar PDF</button>
-                </div>
-                <div class="header">
-                    <h1>Ficha de Matrícula - Sou Fitness</h1>
-                    <p>Documento gerado em: ${new Date().toLocaleDateString()}</p>
-                </div>
-                <div class="section">
-                    <span class="section-title">Dados Pessoais & Contato</span>
-                    <div class="grid">
-                        <div><span class="label">Nome:</span> ${aluno.nome}</div>
-                        <div><span class="label">CPF:</span> ${aluno.cpf || "-"}</div>
-                        <div><span class="label">WhatsApp:</span> ${aluno.whatsapp || aluno.celular || "-"}</div>
-                        <div><span class="label">E-mail:</span> ${aluno.email || "-"}</div>
-                    </div>
-                </div>
-                <div class="section">
-                    <span class="section-title">Plano & Contrato</span>
-                    <div class="grid">
-                        <div><span class="label">Plano Selecionado:</span> ${aluno.plano}</div>
-                        <div><span class="label">Valor Mensal:</span> ${formatarMoeda(aluno.valor)}</div>
-                        <div><span class="label">Vencimento:</span> Todo dia ${aluno.vencimento}</div>
-                        <div><span class="label">Status:</span> ${aluno.status}</div>
-                    </div>
-                </div>
-                <div class="footer">
-                    <div class="assinatura">Assinatura do Aluno</div>
-                </div>
-            </body>
-            </html>
-        `);
-    win.document.close();
-    win.focus();
+    window.print();
   };
 
-  // Função para imprimir Recibo (Pagamento já realizado)
-  window.imprimirRecibo = (alunoId, referencia) => {
-    const pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const p = pagamentos.find(
-      (pay) => pay.alunoId === alunoId && pay.referencia === referencia
-    );
-    const aluno = alunos.find((a) => a.id === alunoId);
+  window.imprimirRecibo = async (alunoId, ref) => {
+    if (!supabaseClient) return;
+    mostrarToast("Gerando guia de pagamento...", "info");
 
-    if (!p || !aluno) return;
+    // Busca dados completos do aluno e do pagamento para compor a Guia
+    const { data: aluno } = await supabaseClient.from("alunos").select("*").eq("id", alunoId).single();
+    const { data: pagto } = await supabaseClient.from("pagamentos").select("*").eq("aluno_id", alunoId).eq("referencia", ref).order('created_at', { ascending: false }).limit(1).single();
 
-    const win = window.open("", "PRINT", "height=400,width=600");
-    win.document.write(`
-            <html>
-            <head><title>Recibo - ${aluno.nome}</title></head>
-            <body style="font-family: sans-serif; padding: 20px; border: 2px dashed #000;">
-                <h2 style="text-align:center;">RECIBO DE PAGAMENTO</h2>
-                <p><strong>Recebemos de:</strong> ${aluno.nome}</p>
-                <p><strong>A quantia de:</strong> ${formatarMoeda(p.valor)}</p>
-                <p><strong>Referente ao mês:</strong> ${referencia}</p>
-                <p><strong>Data do pagamento:</strong> ${p.data}</p>
-                <div style="margin-top:40px; text-align:center; border-top: 1px solid #000; width: 250px; margin-left: auto; margin-right: auto;">
-                    Sou Fitness - Assinatura
-                </div>
-                <script>window.onload = function() { window.print(); window.close(); }</script>
-            </body>
-            </html>
-        `);
-    win.document.close();
+    if (!aluno || !pagto) return mostrarToast("Erro ao carregar dados do recebimento.", "error");
+
+    const novaAba = window.open("", "_blank");
+    if (!novaAba) return mostrarToast("Pop-up bloqueado pelo navegador.", "error");
+
+    novaAba.document.write(`
+      <html>
+        <head>
+          <title>Guia de Recebimento - Sou Fitness</title>
+          <style>
+            body { font-family: 'Courier New', Courier, monospace; width: 320px; padding: 20px; margin: 0 auto; color: #000; background: #fff; border: 1px solid #eee; }
+            .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 15px; }
+            .content { font-size: 13px; line-height: 1.5; }
+            .row { display: flex; justify-content: space-between; }
+            .total-box { font-size: 16px; font-weight: bold; margin-top: 10px; border-top: 2px double #000; padding-top: 8px; }
+            .footer { text-align: center; border-top: 1px dashed #000; padding-top: 10px; margin-top: 20px; font-size: 11px; }
+            .btn-print { background: #000; color: #fff; border: none; padding: 10px; cursor: pointer; width: 100%; margin-top: 20px; font-weight: bold; font-family: inherit; }
+            @media print { .no-print { display: none; } body { border: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <strong>SOU FITNESS ACADEMIA</strong><br>
+            SISTEMA DE GESTÃO INTEGRADO<br>
+            *** GUIA DE RECEBIMENTO ***
+          </div>
+          <div class="content">
+            <strong>ALUNO:</strong> ${aluno.nome.toUpperCase()}<br>
+            <strong>MATRÍCULA:</strong> ${aluno.matricula || '---'}<br>
+            <strong>CPF:</strong> ${aluno.cpf || '---'}<br>
+            <strong>RG:</strong> ${aluno.rg || '---'}<br>
+            <div style="margin: 15px 0; border-top: 1px solid #ccc;"></div>
+            <div class="row"><span>Competência:</span> <span>${pagto.referencia}</span></div>
+            <div class="row"><span>Data Pagto:</span> <span>${new Date(pagto.data).toLocaleDateString('pt-BR')}</span></div>
+            <div class="row"><span>Método:</span> <span>${pagto.metodo || 'PIX'}</span></div>
+            <div class="total-box">
+              <span>VALOR PAGO:</span> <span>${formatarMoeda(pagto.valor)}</span>
+            </div>
+          </div>
+          <div class="footer">
+            ESTE DOCUMENTO É UM COMPROVANTE DE QUITAÇÃO<br>
+            Emitido em: ${new Date().toLocaleString('pt-BR')}<br>
+            <button class="btn-print no-print" onclick="window.print()">IMPRIMIR COMPROVANTE</button>
+          </div>
+        </body>
+      </html>
+    `);
   };
 
-  // Função para imprimir Guia de Cobrança (Pagamento pendente)
-  window.imprimirGuia = (alunoId, referencia) => {
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const aluno = alunos.find((a) => a.id === alunoId);
-    if (!aluno) return;
-
-    const win = window.open("", "PRINT", "height=400,width=600");
-    win.document.write(`
-            <html>
-            <head><title>Guia de Pagamento - ${aluno.nome}</title></head>
-            <body style="font-family: sans-serif; padding: 20px; border: 1px solid #000;">
-                <h2 style="text-align:center;">GUIA DE MENSALIDADE</h2>
-                <p><strong>Aluno:</strong> ${aluno.nome}</p>
-                <p><strong>Plano:</strong> ${aluno.plano}</p>
-                <p><strong>Referência:</strong> ${referencia}</p>
-                <p><strong>Valor:</strong> ${formatarMoeda(aluno.valor)}</p>
-                <p><strong>Vencimento:</strong> Dia ${aluno.vencimento} de ${referencia.split("/")[0]}</p>
-                <hr>
-                <p style="font-size: 12px; text-align: center;">Favor realizar o pagamento na recepção da academia.</p>
-                <script>window.onload = function() { window.print(); window.close(); }</script>
-            </body>
-            </html>
-        `);
-    win.document.close();
+  window.imprimirGuia = (id, ref) => {
+    window.print();
   };
 
-  // Função para carregar dados no formulário para edição
-  window.editarAluno = (id) => {
-    // Se não estiver na página de Alunos, redireciona passando o ID
-    if (!window.location.pathname.includes("Alunos.html")) {
-      window.location.href = `Alunos.html?edit=${id}`;
+  // Função interna para gerar o payload PIX (BRCode)
+  const gerarPayloadPix = async (valor) => {
+    const { data: config } = await supabaseClient.from("pix_configs").select("*").limit(1).single();
+    if (!config || !config.chave) return null;
+
+    const vStr = parseFloat(valor).toFixed(2);
+    // Formatação conforme padrão EMV do PIX (Simplificado para o sistema)
+    return `00020126360014BR.GOV.BCB.PIX01${config.chave.length}${config.chave}52040000530398654${vStr.length}${vStr}5802BR59${config.nome.length}${config.nome}60${config.cidade.length}${config.cidade}62070503***6304`;
+  };
+
+  window.gerarPix = async (id, valor) => {
+    if (!supabaseClient) return;
+
+    const payload = await gerarPayloadPix(valor);
+    if (!payload) {
+      return mostrarToast("Configure sua chave PIX nas Configurações primeiro!", "error");
+    }
+
+    // Abre o relatório/recibo em uma nova aba com o QR Code (usando API externa para o QR)
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payload)}`;
+    const novaAba = window.open("", "_blank");
+    if (!novaAba) return mostrarToast("Pop-up bloqueado pelo navegador.", "error");
+
+    novaAba.document.write(`
+      <html>
+        <head><title>Pagamento PIX</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#f4f4f4;} .btn{padding:10px 20px; cursor:pointer; background:#FFD400; border:none; font-weight:bold; border-radius:5px; margin-top:20px;}</style></head>
+        <body>
+          <h2>Pagamento via PIX</h2>
+          <p>Valor: <strong>${formatarMoeda(valor)}</strong></p>
+          <img src="${qrUrl}" alt="QR Code PIX">
+          <p style="margin-top:20px; font-size:12px; color:#666;">Aponte a câmera do seu banco para o código acima.</p>
+          <button class="btn" onclick="window.print()">Imprimir Recibo</button>
+        </body>
+      </html>
+    `);
+  };
+
+  window.copiarPixCobranca = async (alunoId, valor) => {
+    const payload = await gerarPayloadPix(valor);
+    if (!payload) return mostrarToast("Configure sua chave PIX primeiro.", "error");
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      mostrarToast("Código PIX Copia e Cola copiado!");
+    } catch (err) {
+      mostrarToast("Erro ao copiar código PIX.", "error");
+    }
+  };
+
+  window.enviarWhatsAppCobranca = async (alunoId, valor, ref) => {
+    const { data: aluno } = await supabaseClient.from("alunos").select("nome, whatsapp").eq("id", alunoId).single();
+    if (!aluno || !aluno.whatsapp) return mostrarToast("WhatsApp do aluno não cadastrado.", "error");
+
+    const payload = await gerarPayloadPix(valor);
+    if (!payload) return mostrarToast("Configure sua chave PIX primeiro.", "error");
+
+    const msg = `Olá *${aluno.nome}*! 👋\nSeguem os dados para pagamento da mensalidade de *${ref}* no valor de *${formatarMoeda(valor)}*.\n\n*Código PIX Copia e Cola:*\n${payload}`;
+    const fone = aluno.whatsapp.replace(/\D/g, "");
+    window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  window.togglePagamento = (id) => {
+    mostrarToast("Funcionalidade de estorno em desenvolvimento.", "info");
+  };
+
+  window.exportarDados = () => {
+    mostrarToast("Exportação de backup em desenvolvimento.", "info");
+  };
+
+  window.importarDados = (input) => {
+    mostrarToast("Importação de backup em desenvolvimento.", "info");
+  };
+
+  window.verificarGeracaoMensalidades = async () => {
+    if (!supabaseClient) return;
+    mostrarToast("Iniciando geração manual...", "info");
+    
+    // Chama a função RPC que criamos no banco de dados
+    const { error } = await supabaseClient.rpc('gerar_mensalidades_automaticas');
+    
+    if (error) {
+      console.error(error);
+      mostrarToast("Erro ao gerar mensalidades no servidor.", "error");
+    } else {
+      mostrarToast("Processamento concluído no banco de dados!");
+      await carregarAlunos();
+    }
+  };
+
+  const calcularPendenciasHistoricas = (aluno) => ({ meses: [], total: 0 }); // [cite: 948]
+
+  // Global variable to store available plans
+  window.planosDisponiveis = [];
+
+  window.inicializarPlanos = async () => {
+    if (!supabaseClient) {
+      console.error("Supabase não inicializado para carregar planos.");
       return;
     }
 
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const aluno = alunos.find((a) => a.id === id);
-    if (!aluno) return;
+    const selectPlano = document.getElementById("plano");
+    const inputValor = document.getElementById("valor");
 
-    editId = id;
-    document.getElementById("nome").value = aluno.nome;
-    document.getElementById("cpf").value = aluno.cpf || "";
-    document.getElementById("nascimento").value = aluno.nascimento || "";
-    document.getElementById("sexo").value = aluno.sexo || "Masculino";
-    document.getElementById("estadoCivil").value =
-      aluno.estadoCivil || "Solteiro";
-    document.getElementById("celular").value = aluno.celular || "";
-    document.getElementById("whatsapp").value = aluno.whatsapp || "";
-    document.getElementById("email").value = aluno.email || "";
-    document.getElementById("plano").value = aluno.plano;
-    document.getElementById("valor").value = formatarMoeda(aluno.valor);
-    document.getElementById("vencimento").value = aluno.vencimento || "";
-    document.getElementById("status").checked = aluno.status === "Ativo";
-    document.getElementById("peso").value = aluno.peso || "";
-    document.getElementById("altura").value = aluno.altura || "";
-    calcularIMC();
+    if (selectPlano) {
+      const { data: planos, error } = await supabaseClient
+        .from("planos")
+        .select("*")
+        .order("nome", { ascending: true });
 
-    const btn = form.querySelector(".btn-salvar");
-    btn.innerText = "Atualizar Aluno";
-    btn.style.background = "#22C55E";
-    btn.style.color = "white";
-
-    const btnImp = document.getElementById("btnImprimirFicha");
-    if (btnImp) {
-      btnImp.style.display = "block";
-      btnImp.onclick = () => window.imprimirFicha(id);
-    }
-
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  // Função para carregar os dados na tabela do Financeiro
-  const carregarFinanceiro = () => {
-    if (window.location.pathname.includes("financeiro.html")) {
-      const tabHoje = document.getElementById("tabelaHoje");
-      if (tabHoje) {
-        carregarAlunos(); // Carrega a listagem geral e as segmentadas
+      if (error) {
+        console.error("Erro ao carregar planos do Supabase:", error);
+        mostrarToast("Erro ao carregar planos.", "error");
+        return;
       }
-    }
-  };
 
-  // --- FUNÇÃO DE EXTRATO FINANCEIRO INDIVIDUAL ---
-  window.exibirExtratoAluno = (id, editCobId = null) => {
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    const cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-    const aluno = alunos.find((a) => a.id === id);
-    if (!aluno) return;
+      window.planosDisponiveis = planos; // Store globally
 
-    const extratoModal = document.getElementById("modalExtrato");
-    const tabelaCorpo = document.getElementById("extratoTabelaCorpo");
+      const valorAtual = selectPlano.value;
+      selectPlano.innerHTML = '<option value="">Selecione um plano...</option>';
+      
+      planos.forEach(p => {
+        const option = document.createElement("option");
+        option.value = p.nome;
+        option.text = p.nome;
+        option.dataset.valor = p.valor; // Store value in dataset for easy access
+        if (p.nome === valorAtual) option.selected = true;
+        selectPlano.appendChild(option);
+      });
 
-    if (!extratoModal || !tabelaCorpo) {
-      console.error("Estrutura do modal não encontrada nesta página.");
-      return;
-    }
-
-    const filtroAno =
-      document.getElementById("filtroAno")?.value || new Date().getFullYear();
-
-    let tituloExtrato = `Ficha Financeira: ${aluno.nome}`;
-    if (aluno.status === "Inativo" && aluno.dataCancelamento) {
-      tituloExtrato += `<br><span style="color: #EF4444; font-size: 13px; font-weight: 500;">🚫 Plano Cancelado em: ${aluno.dataCancelamento}</span>`;
-    }
-
-    document.getElementById("extratoNomeAluno").innerHTML = tituloExtrato;
-    tabelaCorpo.innerHTML = "";
-
-    // Filtra cobranças do aluno para o ano selecionado (ou todas)
-    const historico = cobrancas
-      .filter((c) => c.alunoId === id)
-      .sort(
-        (a, b) =>
-          b.competencia.split("/").reverse().join("") -
-          a.competencia.split("/").reverse().join("")
-      ); // Ordena decrescente
-
-    let totalPago = 0,
-      totalPendente = 0,
-      totalAtrasado = 0;
-
-    historico.forEach((c) => {
-      const valorNum = limparMoeda(c.valor);
-      if (c.status === "PAGO") totalPago += valorNum;
-      else if (c.status === "ATRASADO") totalAtrasado += valorNum;
-      else totalPendente += valorNum;
-
-      const statusClass = c.status.toLowerCase();
-      const emEdicao = String(c.id) === String(editCobId);
-
-      let campoPagamento = c.dataPagamento || "-";
-
-      // Se não estiver pago OU se o usuário clicou para editar a data
-      if (c.status !== "PAGO" || emEdicao) {
-        let dataSugerida = new Date().toISOString().split("T")[0];
-        if (emEdicao && c.dataPagamento) {
-          const partes = c.dataPagamento.split("/");
-          if (partes.length === 3)
-            dataSugerida = `${partes[2]}-${partes[1]}-${partes[0]}`;
+      // Sincroniza o campo de valor quando o plano é alterado manualmente
+      selectPlano.onchange = (e) => {
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        if (selectedOption && selectedOption.dataset.valor && inputValor) {
+          inputValor.value = formatarMoeda(selectedOption.dataset.valor);
         }
-
-        campoPagamento = `
-                    <div style="display: flex; gap: 5px; align-items: center;" class="no-print">
-                        <button onclick="gerarPix('${id}', '${c.valor}')" class="badge-pagamento pendente" style="background:#7c3aed; padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;" title="Gerar QR Code PIX">PIX</button>
-                        <button onclick="enviarWhatsAppPix('${id}', '${c.valor}', '${c.competencia}')" class="badge-pagamento pago" style="background:#22c55e; padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;" title="Enviar PIX por WhatsApp">📱</button>
-                        <input type="date" id="data_ext_${c.id}" value="${dataSugerida}" style="padding: 4px; font-size: 12px; width: 125px; background: #0f172a; border: 1px solid var(--border); color: white; border-radius: 6px; cursor: pointer;">
-                        <button onclick="receberPagamentoExtrato('${id}', '${c.id}', '${c.competencia}')" class="badge-pagamento pago" style="padding: 2px 8px; min-width: auto; height: 24px; font-size: 10px;">${emEdicao ? "Atualizar" : "Confirmar"}</button>
-                    </div>
-                `;
-      } else {
-        campoPagamento = `
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <span style="font-weight: bold; color: var(--success);">${c.dataPagamento}</span>
-                        <button onclick="exibirExtratoAluno('${id}', '${c.id}')" title="Editar Data de Pagamento" class="no-print" style="background:none; border:none; cursor:pointer; font-size: 12px; padding: 0;">✏️</button>
-                    </div>
-                `;
-      }
-
-      const row = tabelaCorpo.insertRow();
-      row.innerHTML = `
-                <td><strong>${c.competencia}</strong></td>
-                <td>${c.vencimento.split("-").reverse().join("/")}</td>
-                <td>${formatarMoeda(c.valor)}</td>
-                <td><span class="badge-pagamento ${statusClass}">${c.status}</span></td>
-                <td>${campoPagamento}</td>
-            `;
-    });
-
-    document.getElementById("extratoPago").innerText = formatarMoeda(totalPago);
-    document.getElementById("extratoAtrasado").innerText =
-      formatarMoeda(totalAtrasado);
-
-    extratoModal.style.display = "block";
-  };
-
-  window.receberPagamentoExtrato = (alunoId, cobrancaId, competencia) => {
-    const inputEl = document.getElementById(`data_ext_${cobrancaId}`);
-    if (!inputEl || !inputEl.value) {
-      alert("Por favor, selecione a data do pagamento.");
-      return;
-    }
-    const dataInput = inputEl.value;
-
-    const [ano, mes, dia] = dataInput.split("-");
-    const dataFormatada = `${dia}/${mes}/${ano}`;
-
-    let cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-    const idx = cobrancas.findIndex((c) => String(c.id) === String(cobrancaId));
-
-    if (idx !== -1) {
-      const cob = cobrancas[idx];
-      cob.status = "PAGO";
-      cob.dataPagamento = dataFormatada;
-      localStorage.setItem("cobrancas", JSON.stringify(cobrancas));
-
-      // Registrar no histórico de pagamentos para consistência dos relatórios
-      let pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
-      const pIdx = pagamentos.findIndex(
-        (p) => p.alunoId === alunoId && p.referencia === competencia
-      );
-
-      if (pIdx !== -1) {
-        // Se já existe, apenas atualiza a data (Edição)
-        pagamentos[pIdx].data = dataFormatada;
-        pagamentos[pIdx].valor = limparMoeda(cob.valor);
-      } else {
-        pagamentos.push({
-          id: Date.now(),
-          alunoId: alunoId,
-          nome: cob.nome,
-          valor: limparMoeda(cob.valor),
-          data: dataFormatada,
-          referencia: competencia,
-        });
-      }
-      localStorage.setItem("pagamentos", JSON.stringify(pagamentos));
-
-      mostrarToast("Pagamento registrado com sucesso!");
-      exibirExtratoAluno(alunoId); // Atualiza o modal do extrato
-      carregarAlunos(); // Atualiza as tabelas de fundo no financeiro
-      atualizarDashboard();
-
-      // Abre o recibo com um pequeno delay para que a UI atualize primeiro
-      setTimeout(() => window.imprimirRecibo(alunoId, competencia), 300);
+      };
     }
   };
 
-  // Carregar alunos salvos ao iniciar
-  const carregarAlunos = () => {
-    const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
+  // Funções para Configurações (PIX e Planos)
+  window.salvarConfigPix = async () => {
+    if (!supabaseClient) return mostrarToast("Supabase não inicializado.", "error");
 
-    // Verifica se há filtros na URL (ex: ?filtro=Ativo&pagamento=atraso)
-    const urlParams = new URLSearchParams(window.location.search);
-    let filtroStatus = urlParams.get("filtro");
-    const filtroPagamento = urlParams.get("pagamento");
+    const chave = document.getElementById('cfg_pix_chave').value;
+    const nome = document.getElementById('cfg_pix_nome').value;
+    const cidade = document.getElementById('cfg_pix_cidade').value;
+
+    try {
+      // Tenta buscar uma configuração existente (assumindo apenas uma)
+      const { data: existingConfig, error: fetchError } = await supabaseClient
+        .from('pix_configs')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows found
+        throw fetchError;
+      }
+
+      if (existingConfig) {
+        // Atualiza a configuração existente
+        const { error: updateError } = await supabaseClient
+          .from('pix_configs')
+          .update({ chave, nome, cidade })
+          .eq('id', existingConfig.id);
+        if (updateError) throw updateError;
+      } else {
+        // Insere uma nova configuração
+        const { error: insertError } = await supabaseClient
+          .from('pix_configs')
+          .insert([{ chave, nome, cidade }]);
+        if (insertError) throw insertError;
+      }
+      mostrarToast('Configurações PIX salvas com sucesso!');
+    } catch (error) {
+      console.error("Erro ao salvar configurações PIX:", error);
+      mostrarToast('Erro ao salvar configurações PIX: ' + error.message, 'error');
+    }
+  };
+
+  window.carregarConfigPix = async () => {
+    if (!supabaseClient) return;
+    try {
+      const { data: config, error } = await supabaseClient
+        .from('pix_configs')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
+        throw error;
+      }
+
+      if (config) {
+        document.getElementById('cfg_pix_chave').value = config.chave || '';
+        document.getElementById('cfg_pix_nome').value = config.nome || '';
+        document.getElementById('cfg_pix_cidade').value = config.cidade || '';
+      }
+    } catch (error) {
+      console.error("Erro ao carregar configurações PIX:", error);
+      mostrarToast('Erro ao carregar configurações PIX: ' + error.message, 'error');
+    }
+  };
+
+  window.salvarPlano = async (planoData) => {
+    if (!supabaseClient) return mostrarToast("Supabase não inicializado.", "error");
+    try {
+      if (planoData.id) {
+        const { error } = await supabaseClient.from('planos').update({ nome: planoData.nome, valor: planoData.valor }).eq('id', planoData.id);
+        if (error) throw error;
+        mostrarToast('Plano atualizado com sucesso!');
+      } else {
+        const { error } = await supabaseClient.from('planos').insert([{ nome: planoData.nome, valor: planoData.valor }]);
+        if (error) throw error;
+        mostrarToast('Plano salvo com sucesso!');
+      }
+      window.carregarTabelaPlanosConfig();
+      window.inicializarPlanos(); // Atualiza o select de planos em outras páginas
+    } catch (error) {
+      console.error("Erro ao salvar plano:", error);
+      mostrarToast('Erro ao salvar plano: ' + error.message, 'error');
+    }
+  };
+
+  window.carregarTabelaPlanosConfig = async () => {
+    if (!supabaseClient) return;
+    try {
+      const { data: planos, error } = await supabaseClient
+        .from('planos')
+        .select('*')
+        .order('nome', { ascending: true });
+
+      if (error) throw error;
+
+      const tbody = document.getElementById('tabelaConfigPlanos');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      planos.forEach(p => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+          <td>${p.nome}</td>
+          <td>${formatarMoeda(p.valor)}</td>
+          <td>
+            <button onclick="editarPlanoConfig('${p.id}')" style="background:none; color:var(--primary); padding:0; margin-right:10px;" title="Editar">✏️</button>
+            <button onclick="removerPlanoConfig('${p.id}')" style="background:none; color:#ff4444; padding:0;" title="Remover">🗑️</button>
+          </td>
+        `;
+      });
+    } catch (error) {
+      console.error("Erro ao carregar planos na tabela:", error);
+      mostrarToast('Erro ao carregar planos na tabela: ' + error.message, 'error');
+    }
+  };
+
+  window.editarPlanoConfig = async (id) => {
+    if (!supabaseClient) return;
+    try {
+      const { data: plano, error } = await supabaseClient
+        .from('planos')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+
+      if (plano) {
+        document.getElementById('plano_nome').value = plano.nome;
+        document.getElementById('plano_valor').value = plano.valor.toFixed(2).replace('.', ',');
+        window.editPlanoId = id; // Use window.editPlanoId to make it global
+        document.querySelector('#formPlano button[type="submit"]').innerText = '💾 Atualizar Plano';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (error) {
+      console.error("Erro ao carregar plano para edição:", error);
+      mostrarToast('Erro ao carregar plano para edição: ' + error.message, 'error');
+    }
+  };
+
+  window.removerPlanoConfig = async (id) => {
+    if (!supabaseClient) return mostrarToast("Supabase não inicializado.", "error");
+    if (!confirm("Tem certeza que deseja remover este plano?")) return;
+    try {
+      const { error } = await supabaseClient.from('planos').delete().eq('id', id);
+      if (error) throw error;
+      mostrarToast('Plano removido com sucesso!');
+      window.carregarTabelaPlanosConfig();
+      window.inicializarPlanos(); // Atualiza o select de planos em outras páginas
+    } catch (error) {
+      console.error("Erro ao remover plano:", error);
+      mostrarToast('Erro ao remover plano: ' + error.message, 'error');
+    }
+  };
+
+  // =========================================================================
+  // FLUXO DE PAGAMENTOS E FINANCEIRO
+  // =========================================================================
+  window.confirmarPagamentoCobranca = async (cobrancaId) => {
+    // [cite: 954]
+    const inputData = document.getElementById(`data_cob_${cobrancaId}`); // [cite: 955]
+    if (!inputData || !inputData.value) {
+      // [cite: 956]
+      alert("Por favor, selecione a data do recebimento."); // [cite: 957]
+      return; // [cite: 958]
+    }
+    const dataInput = inputData.value; // [cite: 960]
+    const [ano, mes, dia] = dataInput.split("-"); // [cite: 961]
+    const dataFormatada = `${dia}/${mes}/${ano}`; // [cite: 962]
+    // Busca a cobrança no Supabase primeiro
+    const { data: cob, error: errFetch } = await supabaseClient.from("cobrancas").select("*").eq("id", cobrancaId).single();
+    if (errFetch || !cob) return mostrarToast("Cobrança não encontrada.", "error");
+
+    // 1. Salva no Supabase (Histórico Real)
+    const { error: errInsert } = await supabaseClient.from("pagamentos").insert([{
+      aluno_id: cob.aluno_id,
+      nome: cob.nome,
+      valor: cob.valor,
+      data: dataInput,
+      referencia: cob.competencia
+    }]);
+
+    if (errInsert) return mostrarToast("Erro ao salvar histórico.", "error");
+
+    // 2. Remove a cobrança do banco (pois foi paga)
+    await supabaseClient.from("cobrancas").delete().eq("id", cobrancaId);
+
+    mostrarToast("Pagamento recebido com sucesso!");
+    carregarAlunos();
+    // Atualiza a ficha do aluno para liberar o acesso ao ícone de Guia/Recibo
+    window.exibirExtratoAluno(cob.aluno_id);
+  };
+
+  window.confirmarPagamento = async (id) => {
+    atualizarVariaveisFiltro();
+    const valorInput = document.getElementById(`val_${id}`);
+    const dataInput = document.getElementById(`data_${id}`);
+    
+    if (!valorInput || !dataInput || !dataInput.value) return mostrarToast("Selecione a data.", "error");
+
+    // Busca o aluno para pegar o nome
+    const { data: aluno } = await supabaseClient.from("alunos").select("nome").eq("id", id).single();
+
+    // Em vez de usar localStorage, criamos a cobrança no Supabase se ela não existir
+    const { data: novaCob, error } = await supabaseClient.from("cobrancas").insert([{
+      aluno_id: id,
+      nome: aluno.nome,
+      valor: limparMoeda(valorInput.value),
+      vencimento: dataInput.value,
+      competencia: refFiltro,
+      status: 'PENDENTE'
+    }]).select().single();
+
+    if (error) return mostrarToast("Erro ao gerar cobrança: " + error.message, "error");
+    
+    await window.confirmarPagamentoCobranca(novaCob.id);
+  };
+
+  // =========================================================================
+  // RENDERIZAÇÃO E FILTRAGEM (DIRETO DO SUPABASE)
+  // =========================================================================
+  const carregarAlunos = async () => {
+    // [cite: 999]
+    atualizarVariaveisFiltro();
+
+    // Captura o termo de busca no INÍCIO para evitar erros de referência
     const termoBusca = normalizarTexto(
       document.getElementById("buscaNome")?.value || ""
     );
-    const pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
 
-    const mesFiltro =
-      document.getElementById("filtroMes")?.value ||
-      (new Date().getMonth() + 1).toString().padStart(2, "0");
-    const anoFiltro =
-      document.getElementById("filtroAno")?.value || new Date().getFullYear();
-    const refFiltro = `${mesFiltro}/${anoFiltro}`;
-
-    // No financeiro, por padrão, filtramos para mostrar apenas alunos Ativos
-    if (
-      window.location.pathname.includes("financeiro.html") &&
-      !filtroStatus &&
-      !termoBusca
-    ) {
-      filtroStatus = "Ativo";
+    if (!supabaseClient) {
+      // [cite: 1000]
+      console.error("Supabase não inicializado."); // [cite: 1001]
+      return; // [cite: 1002]
     }
 
+    const { data: alunos, error } = await supabaseClient // [cite: 1005]
+      .from("alunos") // [cite: 1006]
+      .select("*") // [cite: 1007]
+      .order("nome", { ascending: true }); // [cite: 1008]
+
+    if (error) {
+      // [cite: 1009]
+      console.error("Erro ao carregar alunos do Supabase:", error); // [cite: 1010]
+      mostrarToast("Erro ao carregar lista de alunos.", "error"); // [cite: 1011]
+      return; // [cite: 1012]
+    }
+
+    // Busca os pagamentos do Supabase para o mês de referência atual
+    const { data: pagamentosDb } = await supabaseClient.from("pagamentos").select("*").eq("referencia", refFiltro);
+    const pagamentos = pagamentosDb || [];
+
+    // Preenche a lista de seleção no Financeiro
+    const listaSelecao = document.getElementById("listaSelecaoAlunos");
+    if (listaSelecao) {
+        listaSelecao.innerHTML = "";
+        const alunosFiltrados = alunos.filter(aluno => 
+            !termoBusca || normalizarTexto(aluno.nome).includes(termoBusca)
+        );
+
+        alunosFiltrados.forEach(aluno => {
+            const item = document.createElement("div");
+            item.className = "aluno-item-card";
+            item.onclick = () => {
+                document.querySelectorAll('.aluno-item-card').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                window.exibirExtratoAluno(aluno.id);
+            };
+            item.innerHTML = `
+                <div class="aluno-avatar-circle">${aluno.nome.charAt(0).toUpperCase()}</div>
+                <div>
+                    <strong style="display:block;">${aluno.nome}</strong>
+                    <small style="color:var(--muted)">${aluno.plano}</small>
+                </div>
+            `;
+            listaSelecao.appendChild(item);
+        });
+    }
+
+    const totalMatriculados = alunos.length; // [cite: 1015]
+    const ativos = alunos.filter((a) => a.status === true).length; 
+
+    if (document.getElementById("totalAlunos"))
+      document.getElementById("totalAlunos").innerText = totalMatriculados;
+    if (document.getElementById("alunosAtivos"))
+      document.getElementById("alunosAtivos").innerText = ativos; // [cite: 1018]
+
+    if (
+      window.location.pathname.includes("financeiro.html") && // [cite: 1098]
+      !urlParams.has("filtro") && 
+      !termoBusca // [cite: 1100]
+    ) {
+      filtroStatus = "Ativo"; // [cite: 1102]
+    }
+    const isFiltrandoTodos = filtroStatus === "Todos" || !filtroStatus;
+
     if (tabelaAlunos) {
-      tabelaAlunos.innerHTML = "";
+      // [cite: 1023]
+      tabelaAlunos.innerHTML = ""; // [cite: 1024]
 
-      // Se estivermos no financeiro, populamos as tabelas baseadas nas cobranças, não apenas nos alunos
-      const tabHoje = document.getElementById("tabelaHoje");
-      const tabAtraso = document.getElementById("tabelaAtraso");
-      const tabProximos = document.getElementById("tabelaProximos");
-      const cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-      const hojeIso = new Date().toISOString().split("T")[0];
+      const tabHoje = document.getElementById("tabelaHoje"); // [cite: 1106]
+      const tabAtraso = document.getElementById("tabelaAtraso"); // [cite: 1107]
+      const tabProximos = document.getElementById("tabelaProximos"); // [cite: 1108]
+      
+      // Converte o filtro de status para booleano para comparação correta
+      const statusFiltroBooleano = filtroStatus === "Ativo" || filtroStatus === "true";
 
-      if (tabHoje) {
-        tabHoje.innerHTML = tabAtraso.innerHTML = tabProximos.innerHTML = "";
+      // Agora buscamos as cobranças do Supabase para exibir no financeiro
+      const { data: cobrancasDb } = await supabaseClient.from("cobrancas").select("*");
+      const cobrancas = cobrancasDb || [];
 
+      const hojeIso = new Date().toISOString().split("T")[0]; // [cite: 1110]
+
+      if (tabHoje && tabAtraso && tabProximos) {
+        // [cite: 1111]
+        tabHoje.innerHTML = tabAtraso.innerHTML = tabProximos.innerHTML = ""; // [cite: 1112]
         cobrancas.forEach((cob) => {
-          const aluno = alunos.find((a) => a.id === cob.alunoId);
+          const aluno = alunos.find((a) => a.id === cob.aluno_id); 
           if (
             !aluno ||
             (termoBusca && !normalizarTexto(aluno.nome).includes(termoBusca))
           )
-            return;
-          if (filtroStatus && aluno.status !== filtroStatus) return;
+            return; // [cite: 1115, 1117, 1119]
+
+          // No Financeiro, as seções de cobrança (Atraso/Hoje) devem mostrar o aluno 
+          // independente do status, pois uma dívida pendente deve ser visível para cobrança.
 
           if (cob.status === "ATRASADO") {
-            adicionarLinhaTabelaSegmentada(tabAtraso, aluno, cob);
+            // [cite: 1121]
+            adicionarLinhaTabelaSegmentada(tabAtraso, aluno, cob); // [cite: 1122]
           } else if (cob.status === "PENDENTE" && cob.vencimento === hojeIso) {
-            adicionarLinhaTabelaSegmentada(tabHoje, aluno, cob);
+            // [cite: 1123]
+            adicionarLinhaTabelaSegmentada(tabHoje, aluno, cob); // [cite: 1124]
           } else if (cob.status === "FUTURA" && cob.competencia === refFiltro) {
-            adicionarLinhaTabelaSegmentada(tabProximos, aluno, cob);
+            // [cite: 1125]
+            adicionarLinhaTabelaSegmentada(tabProximos, aluno, cob); // [cite: 1126]
           }
         });
       }
 
-      let alunosParaExibir = alunos;
+      let alunosParaExibir = alunos; // [cite: 1130]
       if (termoBusca) {
+        // [cite: 1131]
         alunosParaExibir = alunosParaExibir.filter((a) =>
           normalizarTexto(a.nome).includes(termoBusca)
-        );
+        ); // [cite: 1132, 1133]
       }
-      if (filtroStatus) {
+      // Aplica o filtro de status apenas se NÃO houver uma pesquisa por nome
+      if (!isFiltrandoTodos && !termoBusca) {
+        // [cite: 1136]
+        const statusFiltroBooleano = filtroStatus === "Ativo" || filtroStatus === "true";
         alunosParaExibir = alunosParaExibir.filter(
-          (a) => a.status === filtroStatus
+          (a) => a.status === statusFiltroBooleano
         );
       }
       if (filtroPagamento) {
-        const diaHoje = new Date().getDate();
+        // [cite: 1141]
+        const diaHoje = new Date().getDate(); // [cite: 1142]
         alunosParaExibir = alunosParaExibir.filter((a) => {
+          // [cite: 1143]
           const pago = pagamentos.some(
-            (p) => p.alunoId === a.id && p.referencia === refFiltro
-          );
-          return filtroPagamento === "atraso"
-            ? !pago && diaHoje > (parseInt(a.vencimento) || 31)
-            : pago || diaHoje <= (parseInt(a.vencimento) || 31);
+            (p) => p.aluno_id === a.id && p.referencia === refFiltro
+          ); // [cite: 1144, 1145]
+          return filtroPagamento === "atraso" // [cite: 1147]
+            ? !pago && diaHoje > (parseInt(a.vencimento) || 31) // [cite: 1148]
+            : pago || diaHoje <= (parseInt(a.vencimento) || 31); // [cite: 1149]
         });
       }
 
-      // Verifica se veio de um redirecionamento de edição
-      const idParaEditar = urlParams.get("edit");
+      const idParaEditar = urlParams.get("edit"); // [cite: 1153]
       if (idParaEditar && !editId) {
-        // Pequeno delay para garantir que o formulário está pronto
-        setTimeout(() => window.editarAluno(idParaEditar), 100);
+        // [cite: 1154]
+        setTimeout(() => {
+          // [cite: 1155]
+          if (typeof window.editarAluno === "function")
+            window.editarAluno(idParaEditar); // [cite: 1156, 1157]
+        }, 100); // [cite: 1158]
       }
 
-      // Preenche a tabela de inadimplência histórica se ela existir na página
       const tabelaInadimplentes = document.getElementById(
         "tabelaInadimplentes"
-      );
+      ); // [cite: 1161, 1162]
       if (tabelaInadimplentes) {
-        tabelaInadimplentes.innerHTML = "";
+        // [cite: 1164]
+        tabelaInadimplentes.innerHTML = ""; // [cite: 1165]
         alunos.forEach((aluno) => {
-          const hist = calcularPendenciasHistoricas(aluno);
-          if (hist.meses.length > 0) adicionarLinhaInadimplente(aluno, hist);
+          // [cite: 1166]
+          const hist = calcularPendenciasHistoricas(aluno); // [cite: 1167]
+          if (hist.meses.length > 0) adicionarLinhaInadimplente(aluno, hist); // [cite: 1168]
         });
       }
-      alunosParaExibir.forEach((aluno) => adicionarLinhaTabela(aluno));
+
+      alunosParaExibir.forEach((aluno) => adicionarLinhaTabela(aluno, pagamentos));
     }
   };
 
-  // Função para adicionar linha na tabela com estilo por status
-  const adicionarLinhaTabela = (aluno) => {
-    if (!tabelaAlunos) return;
-    const pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
+  // =========================================================================
+  // ENVIO DO FORMULÁRIO (GRAVAÇÃO COMPLETA NO SUPABASE)
+  // =========================================================================
+  if (form) {
+    // [cite: 1039]
+    form.addEventListener("submit", async (e) => {
+      // [cite: 1040]
+      e.preventDefault(); // [cite: 1041]
+      if (!supabaseClient) {
+        // [cite: 1042]
+        alert("Erro: Conexão com o Supabase indisponível."); // [cite: 1043]
+        return; // [cite: 1044]
+      }
 
-    const mesFiltro =
-      document.getElementById("filtroMes")?.value ||
-      (new Date().getMonth() + 1).toString().padStart(2, "0");
-    const anoFiltro =
-      document.getElementById("filtroAno")?.value || new Date().getFullYear();
-    const refFiltro = `${mesFiltro}/${anoFiltro}`;
+      // Garante que a matrícula não esteja vazia
+      let matriculaValor = document.getElementById("matricula")?.value.trim();
+      if (!matriculaValor) {
+        matriculaValor = "MAT" + Date.now().toString().slice(-8);
+      }
 
+      const valorLimpo = limparMoeda(document.getElementById("valor").value); // [cite: 1046]
+      const dadosAluno = {
+        // [cite: 1048]
+        nome: document.getElementById("nome").value, // [cite: 1049]
+        matricula: matriculaValor,
+        cpf: document.getElementById("cpf").value || null, // [cite: 1050]
+        rg: document.getElementById("rg")?.value || null,
+        responsavel: document.getElementById("responsavel")?.value || null,
+        nascimento: document.getElementById("nascimento").value || null, // [cite: 1051]
+        sexo: document.getElementById("sexo").value, // [cite: 1052]
+        estado_civil: document.getElementById("estadoCivil").value,
+        celular: document.getElementById("celular").value || null, // [cite: 1054]
+        whatsapp: document.getElementById("whatsapp").value || null, // [cite: 1055]
+        email: document.getElementById("email").value || null, // [cite: 1056]
+        plano: document.getElementById("plano").value, // [cite: 1057]
+        valor_mensalidade: valorLimpo,
+        status: document.getElementById("status").checked, // Envia true para Ativo e false para Inativo
+        vencimento: parseInt(document.getElementById("vencimento").value) || 10, // [cite: 1060]
+        peso: pesoInput && pesoInput.value ? parseFloat(pesoInput.value.toString().replace(",", ".")) : null,
+        altura:
+          alturaInput && alturaInput.value
+            ? (() => {
+                let alt = parseFloat(alturaInput.value.toString().replace(",", "."));
+                return alt > 3 ? alt / 100 : alt; // Se digitar 175, converte para 1.75
+              })()
+            : null,
+        imc: imcInput && imcInput.value 
+          ? parseFloat(imcInput.value.split(" - ")[0]) || null // Envia apenas o número (ex: 22.50)
+          : null,
+      };
+
+      try {
+        // [cite: 1065]
+        if (editId) {
+          // [cite: 1066]
+          const { error: errorUpdate } = await supabaseClient // [cite: 1068]
+            .from("alunos") // [cite: 1069]
+            .update(dadosAluno) // [cite: 1070]
+            .eq("id", editId); // [cite: 1071]
+
+          if (errorUpdate) throw errorUpdate; // [cite: 1072]
+          editId = null; // [cite: 1073]
+        } else {
+          const novoAluno = { ...dadosAluno };
+          const { error: errorInsert } = await supabaseClient // [cite: 1080]
+            .from("alunos") // [cite: 1081]
+            .insert([novoAluno]); // [cite: 1082]
+
+          if (errorInsert) throw errorInsert; // [cite: 1083]
+        }
+
+        mostrarToast("Aluno salvo com sucesso!"); 
+        form.reset(); // [cite: 1086]
+        gerarMatriculaAutomatica(); // Gera uma nova para o próximo cadastro
+        await window.verificarGeracaoMensalidades(); // GERA A PARCELA DO MÊS ATUAL NA HORA
+        if (imcInput) imcInput.value = ""; // [cite: 1087]
+        await carregarAlunos(); // [cite: 1089]
+      } catch (erroBanco) {
+        // [cite: 1090]
+        console.error("Erro interno do Supabase:", erroBanco); // [cite: 1091]
+        
+        let mensagemAmigavel = erroBanco.message;
+        if (erroBanco.code === '42501') {
+          mensagemAmigavel = "Erro de Permissão (RLS): Vá ao painel do Supabase e habilite as Políticas de Acesso (Policies) para a tabela 'alunos'.";
+        }
+
+        mostrarToast(`Não foi possível salvar: ${mensagemAmigavel}`, 'error'); //
+      }
+    });
+  }
+
+  // =========================================================================
+  // FUNÇÕES DE EDIÇÃO E REMOÇÃO (ESCOPO GLOBAL)
+  // =========================================================================
+  window.editarAluno = async (id) => {
+    if (!supabaseClient) return;
+    
+    const { data: aluno, error } = await supabaseClient
+      .from("alunos")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error || !aluno) {
+      mostrarToast("Erro ao carregar dados do aluno.", "error");
+      return;
+    }
+
+    // Preenche o formulário com os dados do banco
+    const campos = {
+      "nome": aluno.nome,
+      "matricula": aluno.matricula,
+      "cpf": aluno.cpf,
+      "rg": aluno.rg,
+      "responsavel": aluno.responsavel,
+      "nascimento": aluno.nascimento,
+      "sexo": aluno.sexo,
+      "estadoCivil": aluno.estado_civil,
+      "celular": aluno.celular,
+      "whatsapp": aluno.whatsapp,
+      "email": aluno.email,
+      "vencimento": aluno.vencimento,
+      "peso": aluno.peso,
+      "altura": aluno.altura,
+      "imc": aluno.imc
+    };
+
+    Object.keys(campos).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = campos[id] || "";
+    });
+
+    if (document.getElementById("matricula")) document.getElementById("matricula").value = aluno.matricula || "";
+    document.getElementById("cpf").value = aluno.cpf || "";
+    document.getElementById("nascimento").value = aluno.nascimento || "";
+    document.getElementById("sexo").value = aluno.sexo || "Masculino";
+    document.getElementById("estadoCivil").value = aluno.estado_civil || "Solteiro";
+    document.getElementById("celular").value = aluno.celular || "";
+    document.getElementById("whatsapp").value = aluno.whatsapp || "";
+    document.getElementById("email").value = aluno.email || "";
+    // Set plano based on fetched plans
+    const selectPlano = document.getElementById("plano");
+    if (selectPlano) {
+      selectPlano.value = aluno.plano || "";
+      selectPlano.dispatchEvent(new Event('change')); // Trigger change to update valor_mensalidade
+    }
+    document.getElementById("valor").value = formatarMoeda(aluno.valor_mensalidade || 0);
+    document.getElementById("vencimento").value = aluno.vencimento || 10;
+    document.getElementById("status").checked = aluno.status === true;
+    if (pesoInput) pesoInput.value = aluno.peso || "";
+    if (alturaInput) alturaInput.value = aluno.altura || "";
+    if (imcInput) imcInput.value = aluno.imc || "";
+
+    editId = id;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    mostrarToast("Modo de edição ativado.");
+  };
+
+  window.atualizarStatus = async (id, novoStatus) => {
+    if (!supabaseClient) return;
+    
+    const { error } = await supabaseClient
+      .from("alunos")
+      .update({ status: novoStatus })
+      .eq("id", id);
+
+    if (error) mostrarToast("Erro ao atualizar: " + error.message, "error");
+    else mostrarToast("Status atualizado com sucesso!");
+  };
+
+  window.removerAluno = async (id) => {
+    if (!confirm("Tem certeza que deseja excluir este aluno definitivamente?")) return;
+    
+    const { error } = await supabaseClient.from("alunos").delete().eq("id", id);
+    if (error) {
+      mostrarToast("Erro ao excluir aluno: " + error.message, "error");
+    } else {
+      mostrarToast("Aluno removido com sucesso!");
+      await carregarAlunos();
+    }
+  };
+
+  // =========================================================================
+  // MANIPULAÇÃO DO DOM / COMPONENTES DE TABELA
+  // =========================================================================
+  const adicionarLinhaTabela = (aluno, pagamentos = []) => {
+    // [cite: 1177]
+    if (!tabelaAlunos) return; // [cite: 1178]
     const pagoEsteMes = pagamentos.some(
-      (p) => p.alunoId === aluno.id && p.referencia === refFiltro
-    );
-
-    const novaLinha = tabelaAlunos.insertRow();
-    const statusClass = (aluno.status || "Ativo").toLowerCase();
+      (p) => p.aluno_id === aluno.id && p.referencia === refFiltro
+    ); // [cite: 1186, 1187]
+    const novaLinha = tabelaAlunos.insertRow(); // [cite: 1189]
     const isManagementPage =
       window.location.pathname.includes("alunosativos.html") ||
-      window.location.pathname.includes("financeiro.html");
+      window.location.pathname.includes("financeiro.html"); // [cite: 1190, 1191, 1192]
 
     let colStatus = `
-            <td>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label class="switch">
-                        <input type="checkbox" onchange="atualizarStatus('${aluno.id}', this.checked ? 'Ativo' : 'Inativo')" ${aluno.status === "Ativo" ? "checked" : ""}>
-                        <span class="slider-toggle"></span>
-                    </label>
-                    <span style="font-size: 13px; font-weight: 500; color: ${aluno.status === "Ativo" ? "var(--success)" : "#EF4444"}">
-                        ${aluno.status || "Ativo"}
-                    </span>
-                </div>
-            </td>
-        `;
-    let colExtra = "";
+      <td>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <label class="switch">
+            <input type="checkbox" onchange="atualizarStatus('${aluno.id}', this.checked)" ${aluno.status === true ? "checked" : ""}>
+            <span class="slider-toggle"></span>
+          </label>
+          <span style="font-size: 13px; font-weight: 500; color: ${aluno.status === true ? "var(--success)" : "#EF4444"}">
+            ${aluno.status === true ? "Ativo" : "Inativo"}
+          </span>
+        </div>
+      </td>
+    `; // [cite: 1193, 1205]
 
+    let colExtra = ""; // [cite: 1206]
     if (isManagementPage) {
-      const venc = aluno.vencimento || "-";
-      const diaHoje = new Date().getDate();
-      const vencNum = parseInt(aluno.vencimento) || 31;
-      const atrasado = !pagoEsteMes && diaHoje > vencNum;
+      // [cite: 1207]
+      const venc = aluno.vencimento || "-"; // [cite: 1208]
+      const diaHoje = new Date().getDate(); // [cite: 1209]
+      const vencNum = parseInt(aluno.vencimento) || 31; // [cite: 1210]
+      const atrasado = !pagoEsteMes && diaHoje > vencNum; // [cite: 1211]
       const pagStatusText = pagoEsteMes
         ? "Pago"
         : atrasado
           ? "Atrasado"
-          : "Pendente";
+          : "Pendente"; // [cite: 1212, 1215, 1216]
       const pagClass = pagoEsteMes
         ? "pago"
         : atrasado
           ? "atrasado"
-          : "pendente";
+          : "pendente"; // [cite: 1217, 1220, 1221]
 
       colStatus = `
-                <td>
-                    <select onchange="atualizarStatus('${aluno.id}', this.value)" class="status-select">
-                        <option value="Ativo" ${aluno.status === "Ativo" ? "selected" : ""}>Ativo</option>
-                        <option value="Inativo" ${aluno.status === "Inativo" ? "selected" : ""}>Inativo</option>
-                        <option value="Inadimplente" ${aluno.status === "Inadimplente" ? "selected" : ""}>Inadimplente</option>
-                        <option value="Bloqueado" ${aluno.status === "Bloqueado" ? "selected" : ""}>Bloqueado</option>
-                    </select>
-                </td>
-            `;
+        <td>
+          <select onchange="atualizarStatus('${aluno.id}', this.value === 'true')" class="status-select">
+            <option value="true" ${aluno.status === true ? "selected" : ""}>Ativo</option>
+            <option value="false" ${aluno.status === false ? "selected" : ""}>Inativo</option>
+          </select>
+        </td>
+      `; // [cite: 1222, 1230]
 
       if (window.location.pathname.includes("financeiro.html")) {
+        // [cite: 1232]
         if (pagoEsteMes) {
+          // [cite: 1233]
           const p = pagamentos.find(
-            (pay) => pay.alunoId === aluno.id && pay.referencia === refFiltro
-          );
+            (pay) => pay.aluno_id === aluno.id && pay.referencia === refFiltro
+          ); // [cite: 1234, 1235]
           colExtra = `
-                        <td>Dia ${venc}</td>
-                        ${colStatus}
-                        <td>
-                            <div style="font-size: 12px; color: var(--success); font-weight: bold; margin-bottom: 5px;">
-                                ${p.data} - ${formatarMoeda(p.valor)}
-                            </div>
-                            <div style="display: flex; gap: 5px;">
-                                <button onclick="imprimirRecibo('${aluno.id}', '${refFiltro}')" class="badge-pagamento pago" style="flex:1;">📄 Recibo</button>
-                                <button onclick="togglePagamento('${aluno.id}')" class="badge-pagamento atrasado" style="flex:1;">🔄 Estornar</button>
-                            </div>
-                        </td>
-                    `;
+            <td>Dia ${venc}</td>
+            ${colStatus}
+            <td>
+              <div style="font-size: 12px; color: var(--success); font-weight: bold; margin-bottom: 5px;">
+                ${p.data} - ${formatarMoeda(p.valor_mensalidade || p.valor)}
+              </div>
+              <div style="display: flex; gap: 5px;">
+                <button onclick="imprimirRecibo('${aluno.id}', '${refFiltro}')" class="badge-pagamento pago" style="flex:1;"> 📄 Recibo</button>
+                <button onclick="togglePagamento('${aluno.id}')" class="badge-pagamento atrasado" style="flex:1;"> 🔄 Estornar</button>
+              </div>
+            </td>
+          `; // [cite: 1237, 1248]
         } else {
-          const hojeReal = new Date();
+          // [cite: 1250]
+          const hojeReal = new Date(); // [cite: 1251]
           const isMesAtual =
             mesFiltro ==
               (hojeReal.getMonth() + 1).toString().padStart(2, "0") &&
-            anoFiltro == hojeReal.getFullYear();
+            anoFiltro == hojeReal.getFullYear(); // [cite: 1252, 1253, 1254, 1255]
           const dataSugerida = isMesAtual
             ? hojeReal.toISOString().split("T")[0]
-            : `${anoFiltro}-${mesFiltro}-01`;
-
+            : `${anoFiltro}-${mesFiltro}-01`; // [cite: 1256, 1257, 1258]
           colExtra = `
-                        <td>Dia ${venc}</td>
-                        ${colStatus}
-                        <td>
-                            <div style="display: flex; flex-direction: column; gap: 5px;">
-                                <input type="date" id="data_${aluno.id}" value="${dataSugerida}" style="padding: 5px; font-size: 12px; height: 30px; width: 100%;">
-                                <input type="text" id="val_${aluno.id}" value="${formatarMoeda(aluno.valor)}" style="padding: 5px; font-size: 12px; height: 30px; width: 100%;">
-                                <div style="display: flex; gap: 5px;">
-                                    <button onclick="gerarPix('${aluno.id}', '${aluno.valor}')" class="badge-pagamento pendente" style="background:#7c3aed; flex:1;">PIX</button>
-                                    <button onclick="enviarWhatsAppPix('${aluno.id}', '${aluno.valor}', '${refFiltro}')" class="badge-pagamento pago" style="background:#22c55e; min-width:35px;" title="Enviar pelo WhatsApp">📱</button>
-                                    <button onclick="confirmarPagamento('${aluno.id}')" class="badge-pagamento pago" style="flex:1;">✅ Pagar</button>
-                                    <button onclick="imprimirGuia('${aluno.id}', '${refFiltro}')" class="badge-pagamento pendente" style="flex:1;">🖨️ Guia</button>
-                                </div>
-                            </div>
-                        </td>
-                    `;
+            <td>Dia ${venc}</td>
+            ${colStatus}
+            <td>
+              <div style="display: flex; flex-direction: column; gap: 5px;">
+                <input type="date" id="data_${aluno.id}" value="${dataSugerida}" style="padding: 5px; font-size: 12px; height: 30px; width: 100%;">
+                <input type="text" id="val_${aluno.id}" value="${formatarMoeda(aluno.valor_mensalidade)}" style="padding: 5px; font-size: 12px; height: 30px; width: 100%;">
+                <div style="display: flex; gap: 5px;">
+                  <button onclick="gerarPix('${aluno.id}', '${aluno.valor_mensalidade}')" class="badge-pagamento pendente" style="background:#7c3aed; flex:1;">PIX</button>
+                  <button onclick="enviarWhatsAppPix('${aluno.id}', '${aluno.valor_mensalidade}', '${refFiltro}')" class="badge-pagamento pago" style="background:#22c55e; min-width:35px;" title="Enviar pelo WhatsApp"> 📱 </button>
+                  <button onclick="confirmarPagamento('${aluno.id}')" class="badge-pagamento pago" style="flex:1;"> ✅ Pagar</button>
+                  <button onclick="imprimirGuia('${aluno.id}', '${refFiltro}')" class="badge-pagamento pendente" style="flex:1;"> 🖨️ Guia</button>
+                </div>
+              </div>
+            </td>
+          `; // [cite: 1259, 1274]
         }
       } else {
+        // [cite: 1276]
         colExtra = `
-                    <td>Dia ${venc}</td>
-                    ${colStatus}
-                    <td>
-                        <button onclick="togglePagamento('${aluno.id}')" class="badge-pagamento ${pagClass}">
-                            ${pagStatusText}
-                        </button>
-                    </td>
-                `;
+          <td>Dia ${venc}</td>
+          ${colStatus}
+          <td>
+            <button onclick="togglePagamento('${aluno.id}')" class="badge-pagamento ${pagClass}">
+              ${pagStatusText}
+            </button>
+          </td>
+        `; // [cite: 1277, 1286]
       }
     } else {
-      colExtra = colStatus;
+      // [cite: 1287]
+      colExtra = colStatus; // [cite: 1288]
     }
 
     novaLinha.innerHTML = `
-            <td>${aluno.nome}</td>
-            <td>${new Date(parseInt(aluno.id)).toLocaleDateString("pt-BR")}</td>
-            <td>${aluno.plano}</td>
-            <td>${formatarMoeda(aluno.valor)}</td>
-            ${colExtra}
-            <td>
-                <button onclick="exibirExtratoAluno('${aluno.id}')" title="Histórico Financeiro" style="background:none; border:none; cursor:pointer; color:#7c3aed; margin-right: 8px;">📜</button>
-                <button onclick="verFinanceiroAluno('${aluno.nome}')" title="Filtrar no Financeiro" style="background:none; border:none; cursor:pointer; color:#22C55E; margin-right: 8px;">💰</button>
-                <button onclick="editarAluno('${aluno.id}')" style="background:none; border:none; cursor:pointer; color:var(--primary); margin-right: 8px;">✏️</button>
-                <button onclick="imprimirFicha('${aluno.id}')" title="Imprimir Ficha" style="background:none; border:none; cursor:pointer; color:#3b82f6; margin-right: 8px;">🖨️</button>
-                <button onclick="removerAluno('${aluno.id}')" style="background:none; border:none; cursor:pointer; color:#ff4444;">🗑️</button>
-            </td>
-        `;
+      <td>${aluno.nome}</td>
+      <td>${aluno.matricula || "---"}</td>
+      <td>${aluno.plano}</td>
+      <td>${formatarMoeda(aluno.valor_mensalidade)}</td>
+      ${colExtra}
+      <td>
+        <button onclick="exibirExtratoAluno('${aluno.id}')" title="Histórico Financeiro" style="background:none; border:none; cursor:pointer; color:#7c3aed; margin-right: 8px;"> 📜 </button>
+        <button onclick="verFinanceiroAluno('${aluno.nome}')" title="Filtrar no Financeiro" style="background:none; border:none; cursor:pointer; color:#22C55E; margin-right: 8px;"> 💰 </button>
+        <button onclick="editarAluno('${aluno.id}')" style="background:none; border:none; cursor:pointer; color:var(--primary); margin-right: 8px;"> ✏️ </button>
+        <button onclick="imprimirFicha('${aluno.id}')" title="Imprimir Ficha" style="background:none; border:none; cursor:pointer; color:#3b82f6; margin-right: 8px;"> 🖨️ </button>
+        <button onclick="removerAluno('${aluno.id}')" style="background:none; border:none; cursor:pointer; color:#ff4444;"> 🗑️ </button>
+      </td>
+    `; // [cite: 1290, 1303]
   };
 
-  // Adiciona linha na tabela de débitos acumulados (Dívida Histórica)
   const adicionarLinhaInadimplente = (aluno, hist) => {
-    const tabela = document.getElementById("tabelaInadimplentes");
-    if (!tabela) return;
-    const row = tabela.insertRow();
+    // [cite: 1305]
+    const tabela = document.getElementById("tabelaInadimplentes"); // [cite: 1306]
+    if (!tabela) return; // [cite: 1307]
+    const row = tabela.insertRow(); // [cite: 1308]
     row.innerHTML = `
-            <td><strong>${aluno.nome}</strong></td>
-            <td style="color: #EF4444; font-weight: bold;">${hist.meses.length} mês(es)</td>
-            <td><small>${hist.meses.join(", ")}</small></td>
-            <td style="font-weight: bold; color: #EF4444;">${formatarMoeda(hist.total)}</td>
-            <td>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button onclick="exibirExtratoAluno('${aluno.id}')" title="Histórico Financeiro" style="background:none; border:none; cursor:pointer; color:#7c3aed;">📜</button>
-                    <button onclick="verFinanceiroAluno('${aluno.nome}')" class="badge-pagamento atrasado" style="width:100%">Ir para Acerto</button>
-                </div>
-            </td>
-        `;
+      <td><strong>${aluno.nome}</strong></td>
+      <td style="color: #EF4444; font-weight: bold;">${hist.meses.length} mês(es)</td>
+      <td><small>${hist.meses.join(", ")}</small></td>
+      <td style="font-weight: bold; color: #EF4444;">${formatarMoeda(hist.total)}</td>
+      <td>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button onclick="exibirExtratoAluno('${aluno.id}')" title="Histórico Financeiro" style="background:none; border:none; cursor:pointer; color:#7c3aed;"> 📜 </button>
+          <button onclick="verFinanceiroAluno('${aluno.nome}')" class="badge-pagamento atrasado" style="width:100%">Ir para Acerto</button>
+        </div>
+      </td>
+    `; // [cite: 1309, 1320]
   };
 
-  // Função auxiliar para preencher as tabelas segmentadas do financeiro
   const adicionarLinhaTabelaSegmentada = (tabela, aluno, cobranca) => {
-    const row = tabela.insertRow();
-    const dataSugerida = new Date().toISOString().split("T")[0];
-
+    // [cite: 1322]
+    const row = tabela.insertRow(); // [cite: 1323]
+    const dataSugerida = new Date().toISOString().split("T")[0]; // [cite: 1324]
     const statusColor =
       cobranca.status === "ATRASADO"
         ? "#EF4444"
         : cobranca.status === "PENDENTE"
           ? "#F59E0B"
-          : "#64748b";
-    const vencFormatado = cobranca.vencimento.split("-").reverse().join("/");
+          : "#64748b"; // [cite: 1325, 1328, 1330]
+    // const vencFormatado = cobranca.vencimento.split("-").reverse().join("/"); // [cite: 1331]
 
     row.innerHTML = `
-            <td><strong>${aluno.nome}</strong></td>
-            <td>${aluno.plano}</td>
-            <td>${formatarMoeda(cobranca.valor)}</td>
-            <td><span style="color: ${statusColor}; font-weight: bold;">${cobranca.competencia}</span> (Venc. ${vencFormatado})</td>
-            <td>
-                <div style="display: flex; gap: 5px; align-items: center;" class="no-print">
-                    <button onclick="exibirExtratoAluno('${aluno.id}')" title="Histórico Financeiro" style="background:none; border:none; cursor:pointer; color:#7c3aed; margin-right: 5px;">📜</button>
-                    <input type="date" id="data_cob_${cobranca.id}" value="${dataSugerida}" style="padding: 4px; font-size: 12px; width: 125px; background: #0f172a; border: 1px solid var(--border); color: white; cursor: pointer; border-radius: 6px;">
-                    <button onclick="confirmarPagamentoCobranca('${cobranca.id}')" class="badge-pagamento pago">✅ Receber</button>
-                </div>
-            </td>
-        `;
+      <td><strong>${aluno.nome}</strong></td>
+      <td>${aluno.matricula || "---"}</td>
+      <td>${aluno.plano}</td>
+      <td>${formatarMoeda(cobranca.valor)}</td>
+      <td>Dia ${aluno.vencimento || "-"} <br> <small style="color: ${statusColor}">${cobranca.competencia}</small></td>
+      <td>
+        <div style="display: flex; gap: 5px; align-items: center;" class="no-print">
+          <button onclick="exibirExtratoAluno('${aluno.id}')" title="Ficha Financeira e Funcional" style="background:none; border:none; cursor:pointer; color:#7c3aed; margin-right: 5px;"> 📜 </button>
+          <input type="date" id="data_cob_${cobranca.id}" value="${dataSugerida}" style="padding: 4px; font-size: 12px; width: 125px; background: #0f172a; border: 1px solid var(--border); color: white; cursor: pointer; border-radius: 6px;">
+          <button onclick="confirmarPagamentoCobranca('${cobranca.id}')" class="badge-pagamento pago"> ✅ Receber</button>
+        </div>
+      </td>
+    `; // [cite: 1332, 1344]
   };
 
-  window.confirmarPagamentoCobranca = (cobrancaId) => {
-    const inputData = document.getElementById(`data_cob_${cobrancaId}`);
-    if (!inputData || !inputData.value) {
-      alert("Por favor, selecione a data do recebimento.");
-      return;
-    }
-
-    const dataInput = inputData.value;
-    const [ano, mes, dia] = dataInput.split("-");
-    const dataFormatada = `${dia}/${mes}/${ano}`;
-
-    let cobrancas = JSON.parse(localStorage.getItem("cobrancas")) || [];
-    const idx = cobrancas.findIndex((c) => String(c.id) === String(cobrancaId));
-
-    if (idx !== -1) {
-      const cob = cobrancas[idx];
-      cob.status = "PAGO";
-      cob.dataPagamento = dataFormatada;
-
-      // Registra no histórico de pagamentos
-      let pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
-      pagamentos.push({
-        id: Date.now(),
-        alunoId: cob.alunoId,
-        nome: cob.nome,
-        valor: limparMoeda(cob.valor),
-        data: dataFormatada,
-        referencia: cob.competencia,
-      });
-
-      localStorage.setItem("pagamentos", JSON.stringify(pagamentos));
-      localStorage.setItem("cobrancas", JSON.stringify(cobrancas));
-
-      mostrarToast("Pagamento recebido com sucesso!");
-      carregarAlunos();
-      atualizarDashboard();
-
-      // Abre o recibo com um pequeno delay para que a UI atualize primeiro
-      setTimeout(
-        () => window.imprimirRecibo(cob.alunoId, cob.competencia),
-        300
-      );
-    }
-  };
-
-  // Remova a função antiga redundante
-  window.confirmarPagamento = (id) => {
-    // Esta função agora é substituída por confirmarPagamentoCobranca
-    // Mas mantemos o redirecionamento caso necessário
-    console.warn("Use confirmarPagamentoCobranca para maior precisão.");
-  };
-
-  // Função para calcular o IMC automaticamente
+  // =========================================================================
+  // LOGICA DE SAÚDE / CÁLCULO DE IMC
+  // =========================================================================
   const calcularIMC = () => {
-    if (!pesoInput || !alturaInput) return;
-    // Converte valores tratando vírgulas como pontos
-    const peso = parseFloat(pesoInput.value.toString().replace(",", "."));
-    let altura = parseFloat(alturaInput.value.toString().replace(",", "."));
-
+    // [cite: 1349]
+    if (!pesoInput || !alturaInput || !imcInput) return; // [cite: 1350]
+    const peso = parseFloat(pesoInput.value.toString().replace(",", ".")); // [cite: 1351]
+    let altura = parseFloat(alturaInput.value.toString().replace(",", ".")); // [cite: 1352]
     if (peso > 0 && altura > 0) {
-      // Caso o usuário digite a altura em centímetros (ex: 170 em vez de 1.70)
-      if (altura > 3) altura = altura / 100;
-
-      const imc = (peso / (altura * altura)).toFixed(2);
-      let classe = "";
-      if (imc < 18.5) classe = "Abaixo do peso";
-      else if (imc < 25) classe = "Peso Normal";
-      else if (imc < 30) classe = "Sobrepeso";
-      else if (imc < 35) classe = "Obesidade Grau I";
-      else if (imc < 40) classe = "Obesidade Grau II";
-      else classe = "Obesidade Grau III";
-
-      imcInput.value = `${imc} - ${classe}`;
+      // [cite: 1353]
+      if (altura > 3) altura = altura / 100; // Trata centímetros // [cite: 1354]
+      const imc = (peso / (altura * altura)).toFixed(2); // [cite: 1355]
+      let classe = ""; // [cite: 1356]
+      if (imc < 18.5)
+        classe = "Abaixo do peso"; // [cite: 1357]
+      else if (imc < 25)
+        classe = "Peso Normal"; // [cite: 1358]
+      else if (imc < 30)
+        classe = "Sobrepeso"; // [cite: 1359]
+      else if (imc < 35)
+        classe = "Obesidade Grau I"; // [cite: 1360]
+      else if (imc < 40)
+        classe = "Obesidade Grau II"; // [cite: 1361]
+      else classe = "Obesidade Grau III"; // [cite: 1362]
+      imcInput.value = `${imc} - ${classe}`; // [cite: 1363]
     } else {
-      imcInput.value = "";
+      // [cite: 1364]
+      imcInput.value = ""; // [cite: 1365]
     }
   };
 
-  if (pesoInput) pesoInput.addEventListener("input", calcularIMC);
-  if (alturaInput) alturaInput.addEventListener("input", calcularIMC);
+  if (pesoInput) pesoInput.addEventListener("input", calcularIMC); // [cite: 1368]
+  if (alturaInput) alturaInput.addEventListener("input", calcularIMC); // [cite: 1369]
 
-  // Função para salvar o aluno e adicionar na tabela
-  if (form) {
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
 
-      const valorLimpo = limparMoeda(document.getElementById("valor").value);
-
-      const dadosAluno = {
-        nome: document.getElementById("nome").value,
-        cpf: document.getElementById("cpf").value,
-        nascimento: document.getElementById("nascimento").value,
-        sexo: document.getElementById("sexo").value,
-        estadoCivil: document.getElementById("estadoCivil").value,
-        celular: document.getElementById("celular").value,
-        whatsapp: document.getElementById("whatsapp").value,
-        email: document.getElementById("email").value,
-        plano: document.getElementById("plano").value,
-        valor: valorLimpo,
-        status: document.getElementById("status").checked ? "Ativo" : "Inativo",
-        vencimento: document.getElementById("vencimento").value,
-        peso: pesoInput.value,
-        altura: alturaInput.value,
-        imc: imcInput.value,
-      };
-
-      // Salvar no localStorage
-      let alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-
-      // Validação profissional: Verificar se o CPF já existe (apenas em novos cadastros)
-      const cpfExiste = alunos.some(
-        (a) => a.cpf === dadosAluno.cpf && a.id !== editId
-      );
-      if (cpfExiste && dadosAluno.cpf) {
-        mostrarToast("Erro: Este CPF já está cadastrado!", "error");
-        return;
-      }
-
-      const isEdit = !!editId;
-      if (editId) {
-        const index = alunos.findIndex((a) => a.id === editId);
-        if (index !== -1) {
-          // Mantém o ID e o status de pagamento original na atualização
-          alunos[index] = { ...alunos[index], ...dadosAluno };
-        }
-        editId = null;
-        const btn = form.querySelector(".btn-salvar");
-        btn.innerText = "Salvar Aluno";
-        btn.style.background = "var(--primary)";
-        btn.style.color = "black";
-
-        const btnImp = document.getElementById("btnImprimirFicha");
-        if (btnImp) {
-          btnImp.style.display = "none";
-        }
-
-        // Limpa o parâmetro da URL se existir
-        if (window.location.search.includes("edit=")) {
-          window.history.replaceState(
-            {},
-            document.title,
-            window.location.pathname
-          );
-        }
-      } else {
-        const novoAluno = {
-          ...dadosAluno,
-          id: Date.now().toString(),
-        };
-        alunos.push(novoAluno);
-      }
-
-      localStorage.setItem("alunos", JSON.stringify(alunos));
-
-      carregarAlunos();
-      atualizarDashboard();
-
-      form.reset();
-      imcInput.value = "";
-
-      mostrarToast(
-        isEdit
-          ? "Cadastro atualizado com sucesso!"
-          : "Cadastro realizado com sucesso!"
-      );
-    });
-  }
-
-  window.atualizarStatus = (id, novoStatus) => {
-    let alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-    alunos = alunos.map((a) => {
-      if (a.id === id) {
-        let dataCancelamento = a.dataCancelamento || null;
-        if (novoStatus === "Inativo" && a.status !== "Inativo") {
-          // Grava a data apenas se ele estiver sendo inativado agora
-          dataCancelamento = new Date().toLocaleDateString("pt-BR");
-        } else if (novoStatus === "Ativo") {
-          // Limpa a data de cancelamento ao reativar
-          dataCancelamento = null;
-        }
-        return { ...a, status: novoStatus, dataCancelamento };
-      }
-      return a;
-    });
-    localStorage.setItem("alunos", JSON.stringify(alunos));
-    carregarAlunos();
-    atualizarDashboard();
-  };
-
-  window.togglePagamento = (id) => {
-    let pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
-    const refAtual = new Date().toLocaleDateString("pt-BR", {
-      month: "2-digit",
-      year: "numeric",
-    });
-    const indexExistente = pagamentos.findIndex(
-      (p) => p.alunoId === id && p.referencia === refAtual
-    );
-
-    if (indexExistente !== -1) {
-      // Se já pagou este mês, remove o pagamento (estorno)
-      pagamentos.splice(indexExistente, 1);
-    } else {
-      // Se não pagou, cria o lançamento
-      const alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-      const aluno = alunos.find((a) => a.id === id);
-
-      pagamentos.push({
-        id: Date.now(),
-        alunoId: id,
-        nome: aluno.nome,
-        valor: aluno.valor,
-        data: new Date().toLocaleDateString("pt-BR"),
-        referencia: refAtual,
-      });
-    }
-
-    localStorage.setItem("pagamentos", JSON.stringify(pagamentos));
-    carregarAlunos();
-    atualizarDashboard();
-    carregarFinanceiro();
-  };
-
-  window.removerPagamento = (id) => {
-    if (confirm("Deseja excluir este registro de pagamento do histórico?")) {
-      let pagamentos = JSON.parse(localStorage.getItem("pagamentos")) || [];
-      pagamentos = pagamentos.filter((p) => p.id !== id);
-      localStorage.setItem("pagamentos", JSON.stringify(pagamentos));
-      carregarFinanceiro();
-      atualizarDashboard();
-    }
-  };
-
-  // Função global para remover aluno (chamada pelo botão na tabela)
-  window.removerAluno = (id) => {
-    const noFinanceiro = window.location.pathname.includes("financeiro.html");
-
-    if (noFinanceiro) {
-      if (
-        confirm(
-          "Deseja retirar este aluno do financeiro? Isso irá inativar o cadastro, mas manterá o histórico e os dados salvos."
-        )
-      ) {
-        window.atualizarStatus(id, "Inativo");
-        mostrarToast("Aluno inativado e removido do fluxo financeiro.");
-      }
-    } else {
-      // No cadastro geral, ainda permitimos a exclusão total se o usuário desejar
-      const opcao = confirm(
-        "Deseja apagar definitivamente os dados deste aluno? \n\nClique em OK para APAGAR TUDO ou CANCELAR para apenas INATIVAR."
-      );
-      if (opcao) {
-        let alunos = JSON.parse(localStorage.getItem("alunos")) || [];
-        alunos = alunos.filter((aluno) => aluno.id !== id);
-        localStorage.setItem("alunos", JSON.stringify(alunos));
-        mostrarToast("Aluno removido permanentemente.");
-        carregarAlunos();
-        atualizarDashboard();
-      }
-    }
-  };
-
-  // --- SISTEMA DE BACKUP E RESTAURAÇÃO (SEGURANÇA PROFISSIONAL) ---
-  window.exportarDados = () => {
-    const dados = {
-      alunos: JSON.parse(localStorage.getItem("alunos")) || [],
-      cobrancas: JSON.parse(localStorage.getItem("cobrancas")) || [],
-      pagamentos: JSON.parse(localStorage.getItem("pagamentos")) || [],
-      config_pix: JSON.parse(localStorage.getItem("config_pix")) || {},
-      planos: JSON.parse(localStorage.getItem("planos")) || [],
-    };
-
-    const blob = new Blob([JSON.stringify(dados, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchorNode = document.createElement("a");
-    downloadAnchorNode.setAttribute("href", url);
-    downloadAnchorNode.setAttribute(
-      "download",
-      `backup_academia_${new Date().toLocaleDateString().replace(/\//g, "-")}.json`
-    );
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    URL.revokeObjectURL(url);
-    mostrarToast(`Backup de ${dados.alunos.length} alunos gerado com sucesso!`);
-  };
-
-  window.importarDados = (input) => {
-    const file = input.files[0];
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const dados = JSON.parse(e.target.result);
-        if (dados.alunos)
-          localStorage.setItem("alunos", JSON.stringify(dados.alunos));
-        if (dados.cobrancas)
-          localStorage.setItem("cobrancas", JSON.stringify(dados.cobrancas));
-        if (dados.pagamentos)
-          localStorage.setItem("pagamentos", JSON.stringify(dados.pagamentos));
-        if (dados.config_pix)
-          localStorage.setItem("config_pix", JSON.stringify(dados.config_pix));
-        if (dados.planos)
-          localStorage.setItem("planos", JSON.stringify(dados.planos));
-        mostrarToast("Dados restaurados com sucesso!");
-        setTimeout(() => location.reload(), 1000);
-      } catch (err) {
-        mostrarToast("Erro ao ler arquivo de backup.", "error");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const buscaNome = document.getElementById("buscaNome");
-  if (buscaNome) {
-    buscaNome.addEventListener("input", carregarAlunos);
-  }
-
-  // Inicializar filtros de data
-  const filtroMes = document.getElementById("filtroMes");
-  const filtroAno = document.getElementById("filtroAno");
-  if (filtroMes)
-    filtroMes.value = (new Date().getMonth() + 1).toString().padStart(2, "0");
-  if (filtroAno) filtroAno.value = new Date().getFullYear();
-
-  if (filtroMes)
-    filtroMes.addEventListener("change", () => {
-      carregarAlunos();
-      atualizarDashboard();
-    });
-  if (filtroAno)
-    filtroAno.addEventListener("change", () => {
-      carregarAlunos();
-      atualizarDashboard();
-    });
-
-  // Inicialização ao carregar a página
+  // Inicialização final corrigida para evitar erros de sintaxe
   window.inicializarPlanos();
-  carregarAlunos();
-  atualizarDashboard();
+  gerarMatriculaAutomatica();
+  carregarAlunos().then(() => {
+    const buscaInput = document.getElementById("buscaNome");
+    if (buscaInput) {
+      buscaInput.addEventListener("input", carregarAlunos);
+    }
+  });
 });

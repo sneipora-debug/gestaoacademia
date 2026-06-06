@@ -69,20 +69,19 @@
       </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="script.js"></script>
     <script>
       fetch("menu.html").then(res => res.text()).then(html => document.getElementById("menu").innerHTML = html);
-
-      // Carrega os dados salvos ao abrir
-      document.addEventListener('DOMContentLoaded', () => {
-        const config = JSON.parse(localStorage.getItem('config_pix')) || {};
-        document.getElementById('cfg_pix_chave').value = config.chave || '';
-        document.getElementById('cfg_pix_nome').value = config.nome || '';
-        document.getElementById('cfg_pix_cidade').value = config.cidade || '';
-        carregarTabelaPlanosConfig();
+      
+      // Make editPlanoId global for script.js to manage
+      window.editPlanoId = null; 
+      document.addEventListener('DOMContentLoaded', async () => {
+        // Carrega as configurações PIX do Supabase
+        await window.carregarConfigPix();
+        // Carrega a tabela de planos do Supabase
+        await window.carregarTabelaPlanosConfig();
       });
-
-      let editPlanoId = null; // Variável para controlar o modo de edição
 
       // Lógica para Salvar ou Atualizar Plano
       document.getElementById('formPlano').addEventListener('submit', (e) => {
@@ -90,77 +89,16 @@
         const nome = document.getElementById('plano_nome').value;
         const valorRaw = document.getElementById('plano_valor').value;
         const valor = parseFloat(valorRaw.replace('R$', '').replace(/\./g, '').replace(',', '.').replace(/\s/g, '').trim()) || 0;
+        
+        window.salvarPlano({ id: window.editPlanoId, nome, valor }); // Call the global function
 
-        let planos = JSON.parse(localStorage.getItem('planos')) || [];
-        
-        if (editPlanoId) {
-          // Modo Edição: Localiza e atualiza o plano existente
-          const index = planos.findIndex(p => p.id == editPlanoId);
-          if (index !== -1) {
-            planos[index] = { ...planos[index], nome, valor };
-          }
-          editPlanoId = null;
-          document.querySelector('#formPlano button[type="submit"]').innerText = 'Adicionar/Atualizar Plano';
-          alert('Plano atualizado com sucesso!');
-        } else {
-          // Modo Cadastro: Adiciona um novo plano
-          planos.push({ id: Date.now(), nome, valor });
-          alert('Plano salvo com sucesso!');
-        }
-        
-        localStorage.setItem('planos', JSON.stringify(planos));
+        window.editPlanoId = null; // Reset edit mode after saving
+        document.querySelector('#formPlano button[type="submit"]').innerText = 'Adicionar/Atualizar Plano';
         document.getElementById('formPlano').reset();
-        carregarTabelaPlanosConfig();
-        
-        // Atualiza a lista global no script.js para que o cadastro de alunos reflita a mudança
-        if (typeof window.inicializarPlanos === 'function') window.inicializarPlanos();
       });
-
-      window.salvarConfigPix = () => {
-        const config = {
-          chave: document.getElementById('cfg_pix_chave').value,
-          nome: document.getElementById('cfg_pix_nome').value,
-          cidade: document.getElementById('cfg_pix_cidade').value
-        };
-        localStorage.setItem('config_pix', JSON.stringify(config));
-        alert('Configurações PIX salvas!');
-      };
-
-      function carregarTabelaPlanosConfig() {
-        const planos = JSON.parse(localStorage.getItem('planos')) || [];
-        const tbody = document.getElementById('tabelaConfigPlanos');
-        tbody.innerHTML = '';
-        planos.forEach(p => {
-          const row = tbody.insertRow();
-          row.innerHTML = `
-            <td>${p.nome}</td>
-            <td>R$ ${p.valor.toFixed(2).replace('.', ',')}</td>
-            <td>
-              <button onclick="editarPlanoConfig('${p.id}')" style="background:none; color:var(--primary); padding:0; margin-right:10px;" title="Editar">✏️</button>
-              <button onclick="removerPlanoConfig('${p.id}')" style="background:none; color:#ff4444; padding:0;" title="Remover">🗑️</button>
-            </td>
-          `;
-        });
-      }
-
-      window.editarPlanoConfig = (id) => {
-        const planos = JSON.parse(localStorage.getItem('planos')) || [];
-        const plano = planos.find(p => p.id == id);
-        if (plano) {
-          document.getElementById('plano_nome').value = plano.nome;
-          document.getElementById('plano_valor').value = plano.valor.toFixed(2).replace('.', ',');
-          editPlanoId = id;
-          document.querySelector('#formPlano button[type="submit"]').innerText = '💾 Atualizar Plano';
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      };
-
-      window.removerPlanoConfig = (id) => {
-        let planos = JSON.parse(localStorage.getItem('planos')) || [];
-        planos = planos.filter(p => p.id != id);
-        localStorage.setItem('planos', JSON.stringify(planos));
-        carregarTabelaPlanosConfig();
-      };
+      // The functions window.salvarConfigPix, window.editarPlanoConfig, and window.removerPlanoConfig
+      // are now defined in script.js and made globally accessible.
+      // They are called directly from the HTML elements.
     </script>
   </body>
 </html>

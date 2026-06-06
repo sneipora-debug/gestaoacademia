@@ -16,11 +16,12 @@
 }
 
 body{
-    background:var(--bg);
+    background-color:var(--bg);
+    background-image: radial-gradient(circle at top right, #161e2d, transparent);
     color:white;
     color-scheme: dark; /* Essencial para que o calendário do navegador siga o tema escuro */
+    line-height: 1.5;
 }
-
 .container{
     width: 100%;
 }
@@ -41,8 +42,9 @@ header p{
     background:var(--card);
     border:1px solid var(--border);
     border-radius:15px;
-    padding:25px;
+    padding:20px;
     margin-bottom:20px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .card h2{
@@ -94,6 +96,7 @@ button{
     border:none;
     padding:14px 25px;
     border-radius:8px;
+    transition: all 0.2s ease;
     cursor:pointer;
     font-weight:600;
 }
@@ -101,6 +104,10 @@ button{
 .btn-salvar{
     background:var(--primary);
     color:black;
+}
+.btn-salvar:hover{
+    background: #e6bf00;
+    transform: translateY(-1px);
 }
 
 .btn-limpar{
@@ -111,11 +118,15 @@ button{
 table{
     width:100%;
     border-collapse:collapse;
+    margin-top: 10px;
 }
 
 th{
     background:#1E293B;
     color:var(--primary);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 th,
@@ -126,7 +137,7 @@ td{
 }
 
 tr:hover{
-    background:#1a2230;
+    background:rgba(255, 255, 255, 0.02);
 }
 
 .status-select {
@@ -153,6 +164,19 @@ tr:hover{
 .atrasado { background: #EF4444; color: white; }
 .pendente { background: #F59E0B; color: white; }
 .futura { background: #64748b; color: white; } /* Cor cinza para parcelas futuras */
+
+/* Novos Status Profissionais */
+.status-bloqueado { background: #000000; color: #FFD400; border: 1px solid var(--primary); }
+.status-suspenso { background: #475569; color: white; }
+.status-inadimplente { background: #991b1b; color: white; }
+
+/* Estilo para as seções do Financeiro */
+.financeiro-section h2 {
+    font-size: 1.1rem;
+    border-left: 4px solid var(--primary);
+    padding-left: 12px;
+    margin-top: 40px;
+}
 
 /* --- Estilos do Modal de Extrato Financeiro --- */
 .modal-extrato { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
@@ -239,11 +263,111 @@ input:checked + .slider-toggle:before {
 }
 .toast-success { background: var(--success); border-left: 5px solid #166534; }
 .toast-error { background: #EF4444; border-left: 5px solid #991b1b; }
+.toast-info { background: #3b82f6; border-left: 5px solid #1d4ed8; }
 
 @keyframes slideIn {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
 }
+
+/* --- Layout Moderno da Ficha do Aluno --- */
+.financeiro-container {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 25px;
+    margin-top: 20px;
+}
+
+.aluno-selection-list {
+    max-height: calc(100vh - 250px);
+    overflow-y: auto;
+}
+
+.aluno-item-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.aluno-item-card:hover { border-color: var(--primary); background: rgba(255, 212, 0, 0.05); }
+.aluno-item-card.active { border-color: var(--primary); background: rgba(255, 212, 0, 0.1); }
+
+.aluno-avatar-circle {
+    width: 45px;
+    height: 45px;
+    background: #1E293B;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: var(--primary);
+    border: 1px solid var(--border);
+}
+
+.student-profile-header {
+    display: flex;
+    gap: 25px;
+    align-items: center;
+    padding-bottom: 25px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 25px;
+}
+
+.profile-photo-large {
+    width: 100px;
+    height: 100px;
+    background: #1E293B;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    border: 2px solid var(--primary);
+}
+
+.profile-info h2 { margin: 0; font-size: 1.8rem; }
+.profile-info p { color: var(--muted); margin: 5px 0; }
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+/* Tabs System */
+.tab-nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 25px;
+    background: #0f172a;
+    padding: 5px;
+    border-radius: 10px;
+    width: fit-content;
+}
+
+.tab-btn {
+    background: transparent;
+    padding: 10px 20px;
+    color: var(--muted);
+    border-radius: 8px;
+}
+
+.tab-btn.active {
+    background: var(--primary);
+    color: black;
+}
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
 
 @media print {
     #menu, .no-print, header, .botoes, input[type="text"] {
